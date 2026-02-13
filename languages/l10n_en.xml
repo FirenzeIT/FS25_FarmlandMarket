@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<l10n>
+    <texts>
+        <!-- Settings Menu -->
+        <text name="rm_fm_settings_section" text="Farmland Market"/>
+        <text name="rm_fm_settings_availability" text="Field Availability"/>
+        <text name="rm_fm_settings_availability_tooltip" text="Controls how many fields are available for purchase. Higher difficulty means fewer fields and longer waits. Fields rotate based on a seasonal market (more listings Nov-Mar). 'Realistic' is extreme - most fields stay locked for months."/>
+        <text name="rm_fm_settings_priceMultiplier" text="Base Price Multiplier"/>
+        <text name="rm_fm_settings_priceMultiplier_tooltip" text="Multiplier applied to the base farmland price per hectare."/>
+        <text name="rm_fm_settings_priceMultiplier_mapBase" text="Map base price"/>
+
+        <!-- Availability Presets -->
+        <text name="rm_fm_preset_easy" text="Easy"/>
+        <text name="rm_fm_preset_normal" text="Normal"/>
+        <text name="rm_fm_preset_hard" text="Hard"/>
+        <text name="rm_fm_preset_harder" text="Harder"/>
+        <text name="rm_fm_preset_realistic" text="Realistic"/>
+
+        <!-- Context Box / Legend -->
+        <text name="rm_fm_notForSale" text="Not for sale"/>
+        <text name="rm_fm_forSale" text="For sale"/>
+    </texts>
+</l10n>
