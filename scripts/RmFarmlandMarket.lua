@@ -741,6 +741,34 @@ local function onLoadMapFinished()
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmFarmlandMarket.onDayChanged, RmFarmlandMarket)
     Log:debug("Subscribed to DAY_CHANGED message")
 
+    -- Precision Farming compatibility: PF's AdditionalFieldBuyInfo:updateContextBox()
+    -- asynchronously overwrites farmlandValue after our showContextBox append runs.
+    -- PF globals live in its sandboxed mod environment (FS25 mod isolation), not in _G.
+    -- Access via _G["FS25_precisionFarming"] which resolves through our env's __index.
+    local pfEnv = FS25_precisionFarming
+    if pfEnv ~= nil and pfEnv.g_precisionFarming ~= nil then
+        local pfBuyInfo = pfEnv.g_precisionFarming.additionalFieldBuyInfo
+        if pfBuyInfo ~= nil then
+            Log:info("Precision Farming detected, hooking additionalFieldBuyInfo instance")
+            local origUpdateContextBox = pfBuyInfo.updateContextBox
+            function pfBuyInfo:updateContextBox()
+                origUpdateContextBox(self)
+                if not RmFmSettings.isAvailabilityEnabled() then return end
+                if self.lastContextBox == nil then return end
+                local farmlandId = self.selectedFarmlandId
+                if farmlandId == nil then return end
+                local farmland = g_farmlandManager:getFarmlands()[farmlandId]
+                if farmland == nil then return end
+                if RmFmAvailability.isEligibleForAvailability(farmland)
+                   and not RmFmAvailability.isForSale(farmlandId) then
+                    self.lastContextBox:getDescendantByName("farmlandValue"):setText(
+                        g_i18n:getText("rm_fm_notForSale"))
+                    Log:debug("PF_COMPAT: Re-applied 'Not for sale' after PF update for farmland %d", farmlandId)
+                end
+            end
+        end
+    end
+
     Log:info("FarmlandMarket hooks registered")
 end
 
