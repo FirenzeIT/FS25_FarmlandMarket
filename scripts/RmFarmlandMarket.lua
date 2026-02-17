@@ -744,8 +744,7 @@ local function onLoadMapFinished()
     -- Precision Farming compatibility: PF's AdditionalFieldBuyInfo:updateContextBox()
     -- asynchronously overwrites farmlandValue after our showContextBox append runs.
     -- PF globals live in its sandboxed mod environment (FS25 mod isolation), not in _G.
-    -- Access via _G["FS25_precisionFarming"] which resolves through our env's __index.
-    local pfEnv = FS25_precisionFarming
+    local pfEnv = _G.FS25_precisionFarming
     if pfEnv ~= nil and pfEnv.g_precisionFarming ~= nil then
         local pfBuyInfo = pfEnv.g_precisionFarming.additionalFieldBuyInfo
         if pfBuyInfo ~= nil then
