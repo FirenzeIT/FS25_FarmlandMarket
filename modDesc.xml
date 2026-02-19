@@ -1,32 +1,41 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="106">
     <author>Ritter</author>
-    <version>0.2.0.0</version>
+    <version>0.3.0.0</version>
     <title>
         <en>Farmland Market</en>
     </title>
     <description>
         <en><![CDATA[
-*** EARLY ALPHA - USE AT YOUR OWN RISK ***
-This mod is under active development and may contain bugs or cause unexpected behavior. Do not use on a savegame you care about. Back up your save before installing.
+*** ALPHA - This mod is under active development and will contain bugs and cause unexpected behavior. ***
 
 Makes farmland acquisition more realistic and strategic. Field prices reflect their actual crop value, and not all fields are always available for purchase.
 
 Features:
+- Negotiation system - buy and sell farmland through offers and counter-offers
 - Crop-value adjusted pricing - field price includes estimated harvest value
 - Limited field availability - fields rotate daily with seasonal variation
 - Five difficulty presets - Easy, Normal, Hard, Harder, Realistic (or off)
 - Adjustable base price multiplier
 - Map color coding - for-sale and unavailable fields are visually distinct
+- All settings accessible from the in-game settings menu
 
 Notes:
 - Multiplayer compatible
 - Works with any map
-- Crop value estimated from field center point
 
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
+0.3.0.0 (Alpha):
+- Added negotiation system - buy and sell farmland through multi-round offers and counter-offers
+- Added "Make offer" and "Negotiate sale" buttons replacing instant buy/sell
+- Added negotiation cooldown per field to prevent repeated attempts
+- Added negotiation toggle in Game Settings
+- Added context box showing list price for listed fields and market value for owned fields
+- Added multiplayer locking to prevent simultaneous negotiations on the same field
+- Fixed farmland price leaking through "Not for sale" when Precision Farming is active
+
 0.2.0.0 (Alpha):
 - Added field availability system - not all fields are for sale at all times
 - Added five difficulty presets: Easy, Normal, Hard, Harder, Realistic (or off)
@@ -38,11 +47,11 @@ Changelog:
 - Added multiplayer sync for all settings and availability state
 - Price multiplier tooltip now shows the map's base price per hectare
 
-0.1.0.0:
+0.1.0.0 (Alpha):
 - Initial release
 - Farmland prices now include estimated crop value
 - Configurable base price per hectare
-        ]]>        </en>
+        ]]></en>
     </description>
 
     <iconFilename>icon_FarmlandMarket.dds</iconFilename>

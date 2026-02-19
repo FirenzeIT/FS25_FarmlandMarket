@@ -1,14 +1,15 @@
 # Farmland Market
 
-> [!WARNING] 
-> **EARLY ALPHA - USE AT YOUR OWN RISK.** This mod is under active development and may contain bugs, cause unexpected behavior, or corrupt save data. Do not use on a savegame you care about. Back up your save before installing.
+> [!WARNING]
+> **ALPHA** This mod is under active development and will contain bugs and cause unexpected behavior.
 
 Makes farmland acquisition more realistic and strategic. Field prices reflect their actual crop value, and not all fields are always available for purchase.
 
-In vanilla FS25, all unowned farmlands are always available at a static price - even fields with harvest-ready crops that can be immediately sold for profit. Farmland Market adds dynamic pricing based on crop value, limits which fields are for sale at any given time, and color-codes the map so you can see availability at a glance.
+In vanilla FS25, all unowned farmlands are always available at a static price - even fields with harvest-ready crops that can be immediately sold for profit. Farmland Market adds dynamic pricing based on crop value, limits which fields are for sale at any given time, introduces multi-round negotiation for buying and selling, and color-codes the map so you can see availability at a glance.
 
 ## Features
 
+- **Negotiation system** - buy and sell farmland through multi-round offers and counter-offers instead of instant transactions
 - **Crop-value adjusted pricing** - field price includes estimated harvest value based on current growth state, crop type, and market prices
 - **Limited field availability** - only a subset of fields are for sale at any time, rotating daily with seasonal variation (more listings Nov-Mar)
 - **Five difficulty presets** - Easy, Normal, Hard, Harder, and Realistic - or turn availability off entirely
@@ -33,7 +34,9 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 ## Usage
 
 - Farmland prices automatically adjust to include crop value - fields with harvest-ready crops cost more than empty fields
-- Open **Game Settings** to configure the availability preset and base price multiplier
+- Open **Game Settings** to configure the availability preset, base price multiplier, and negotiation toggle
+- To buy a field, select it on the map and click **"Make offer"** to start negotiating
+- To sell a field you own, select it and click **"Negotiate sale"** to receive offers
 - Check the **farmland map** to see which fields are currently for sale (green) or not for sale (red)
 
 
@@ -46,21 +49,7 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 
 ## Changelog
 
-### 0.2.0.0 (Alpha):
-- Added field availability system - not all fields are for sale at all times
-- Added five difficulty presets: Easy, Normal, Hard, Harder, Realistic (or off)
-- Added seasonal market variation - more fields listed Nov-Mar
-- Added map color coding for available and unavailable fields
-- Added farmland legend showing For Sale, Not For Sale, and My Farm
-- Added base price multiplier setting (replaces fixed base price)
-- Added settings to Game Settings menu (availability preset and price multiplier)
-- Added multiplayer sync for all settings and availability state
-- Price multiplier tooltip now shows the map's base price per hectare
-
-### 0.1.0.0 (Alpha):
-- Initial release
-- Farmland prices now include estimated crop value
-- Configurable base price per hectare
+See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 ## License
 
