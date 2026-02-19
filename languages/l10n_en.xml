@@ -17,7 +17,52 @@
         <text name="rm_fm_preset_realistic" text="Realistic"/>
 
         <!-- Context Box / Legend -->
+        <text name="rm_fm_listPrice" text="List price"/>
+        <text name="rm_fm_marketValue" text="Market value"/>
         <text name="rm_fm_notForSale" text="Not for sale"/>
         <text name="rm_fm_forSale" text="For sale"/>
+
+        <!-- Context Action Buttons -->
+        <text name="rm_fm_btn_makeOffer" text="Make offer"/>
+        <text name="rm_fm_btn_negotiateSale" text="Negotiate sale"/>
+
+        <!-- Negotiation Settings -->
+        <text name="rm_fm_settings_negotiation" text="Negotiation"/>
+        <text name="rm_fm_settings_negotiation_tooltip" text="When enabled, buying and selling farmland requires negotiation instead of instant transactions. Prices are negotiated through multi-round offers and counter-offers."/>
+
+        <!-- Negotiation UI -->
+        <text name="rm_fm_neg_listedOpening" text="This field is listed for %s. What's your offer?"/>
+        <text name="rm_fm_neg_unlistedOpening" text="The owner is asking %s for this field."/>
+        <text name="rm_fm_neg_sellerCounters" text="The seller counters at %s."/>
+        <text name="rm_fm_neg_npcOpening" text="A buyer offers %s for your field."/>
+        <text name="rm_fm_neg_npcRaises" text="The buyer raises their offer to %s."/>
+        <text name="rm_fm_neg_counterOffer" text="Counter-offer"/>
+        <text name="rm_fm_neg_enterOffer" text="Enter your offer:"/>
+        <text name="rm_fm_neg_enterCounterAsk" text="Enter your counter-ask:"/>
+        <text name="rm_fm_neg_convergence" text="Split the difference at %s?"/>
+        <text name="rm_fm_neg_lastDitch" text="Wait - how about %s?"/>
+        <text name="rm_fm_neg_roundsExhausted" text="Final offer: %s. Accept or walk away?"/>
+        <text name="rm_fm_neg_sellRoundsExhausted" text="The buyer's final offer is %s. Accept or walk away?"/>
+        <text name="rm_fm_neg_dealBuy" text="Deal! You purchased the field for %s."/>
+        <text name="rm_fm_neg_dealSell" text="Deal! You sold the field for %s."/>
+        <text name="rm_fm_neg_rejected" text="Your offer was too low. The seller won't negotiate further."/>
+        <text name="rm_fm_neg_dismissed" text="The owner isn't interested in selling right now."/>
+        <text name="rm_fm_neg_npcWalked" text="The buyer walked away - your asking price was too high."/>
+        <text name="rm_fm_neg_walkedAway" text="You walked away from the negotiation."/>
+        <text name="rm_fm_neg_ended" text="The negotiation has ended."/>
+        <text name="rm_fm_neg_cooldown" text="You can't negotiate this field right now. Try again later."/>
+        <text name="rm_fm_neg_locked" text="Another player is currently negotiating this field."/>
+        <text name="rm_fm_neg_invalidFarmland" text="This field cannot be negotiated."/>
+        <text name="rm_fm_neg_error" text="Negotiation error: %s"/>
+        <text name="rm_fm_neg_invalidAmount" text="Please enter a valid number greater than zero."/>
+        <text name="rm_fm_neg_cancelConfirm" text="Walk away from this negotiation?"/>
+        <text name="rm_fm_neg_insufficientFunds" text="You don't have enough money to complete this purchase."/>
+        <text name="rm_fm_neg_cooldownDisplay" text="Cooldown: %d period(s)"/>
+        <text name="rm_fm_neg_submit" text="Submit"/>
+        <text name="rm_fm_neg_continue" text="Continue"/>
+        <text name="rm_fm_neg_accept" text="Accept"/>
+        <text name="rm_fm_neg_decline" text="Decline"/>
+        <text name="rm_fm_neg_walkAway" text="Walk Away"/>
+        <text name="rm_fm_neg_enterListingPrice" text="Enter your listing price for this field (market value: %s):"/>
     </texts>
 </l10n>

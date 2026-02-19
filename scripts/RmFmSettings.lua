@@ -26,6 +26,7 @@ local Log = RmLogging.getLogger("FarmlandMarket")
 -- Settings state (1-indexed for MultiTextOption)
 RmFmSettings.availabilityPresetState = 3   -- Default: 3 = Normal (index into PRESET_ORDER)
 RmFmSettings.priceMultiplierState = 3      -- Default: 3 = 1.0x
+RmFmSettings.negotiationEnabledState = 2   -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
 
 -- Price multiplier presets
 RmFmSettings.PRICE_MULTIPLIER_VALUES = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0}
@@ -54,6 +55,12 @@ end
 ---@return number multiplier
 function RmFmSettings.getPriceMultiplier()
     return RmFmSettings.PRICE_MULTIPLIER_VALUES[RmFmSettings.priceMultiplierState]
+end
+
+--- Check if negotiation system is enabled.
+---@return boolean enabled
+function RmFmSettings.isNegotiationEnabled()
+    return RmFmSettings.negotiationEnabledState == 2
 end
 
 -- ============================================================================
@@ -86,6 +93,16 @@ function RmFmSettings.setPriceMultiplier(state)
     Log:trace("<<< setPriceMultiplier()")
 end
 
+--- Set negotiation enabled state (no network - use event for MP changes).
+---@param state number State index (BinaryOption: 1=Off, 2=On)
+function RmFmSettings.setNegotiationEnabled(state)
+    Log:trace(">>> setNegotiationEnabled(state=%d)", state)
+    RmFmSettings.negotiationEnabledState = state
+    Log:debug("SETTINGS: Negotiation = %s (state=%d)",
+        RmFmSettings.isNegotiationEnabled() and "enabled" or "disabled", state)
+    Log:trace("<<< setNegotiationEnabled()")
+end
+
 -- ============================================================================
 -- UI CALLBACKS
 -- ============================================================================
@@ -93,24 +110,28 @@ end
 --- Apply settings change: direct on server, event on remote client.
 ---@param availabilityPresetState number Availability preset state (1-6)
 ---@param priceMultiplierState number Price multiplier state (1-6)
-local function sendSettingsChangeRequest(availabilityPresetState, priceMultiplierState)
-    Log:trace(">>> sendSettingsChangeRequest(preset=%d, mult=%d)", availabilityPresetState, priceMultiplierState)
+---@param negotiationEnabledState number Negotiation enabled state (BinaryOption: 1=Off, 2=On)
+local function sendSettingsChangeRequest(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
+    Log:trace(">>> sendSettingsChangeRequest(preset=%d, mult=%d, neg=%d)",
+        availabilityPresetState, priceMultiplierState, negotiationEnabledState)
     if g_server ~= nil then
         -- Host/server: apply directly and broadcast to remote clients
         Log:debug("SETTINGS: Applying directly on server (host path)")
         RmFmSettings.setAvailabilityPreset(availabilityPresetState)
         RmFmSettings.setPriceMultiplier(priceMultiplierState)
+        RmFmSettings.setNegotiationEnabled(negotiationEnabledState)
         g_server:broadcastEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState)
+            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
         )
-        Log:info("Settings changed: preset=%s (%d) multiplier=%.2fx (%d)",
+        Log:info("Settings changed: preset=%s (%d) multiplier=%.2fx (%d) negotiation=%s",
             RmFmSettings.getPresetName(), availabilityPresetState,
-            RmFmSettings.getPriceMultiplier(), priceMultiplierState)
+            RmFmSettings.getPriceMultiplier(), priceMultiplierState,
+            RmFmSettings.isNegotiationEnabled() and "on" or "off")
     elseif g_client ~= nil then
         -- Remote client: send to server for validation
         Log:debug("SETTINGS: Sending change request to server (client path)")
         g_client:getServerConnection():sendEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState)
+            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
         )
     end
     Log:trace("<<< sendSettingsChangeRequest()")
@@ -121,7 +142,8 @@ end
 ---@param state number New state (1-6, index into PRESET_ORDER)
 local function onAvailabilityPresetChanged(_, state)
     Log:trace(">>> onAvailabilityPresetChanged(state=%d)", state)
-    sendSettingsChangeRequest(state, RmFmSettings.priceMultiplierState)
+    sendSettingsChangeRequest(state, RmFmSettings.priceMultiplierState,
+        RmFmSettings.negotiationEnabledState)
     Log:trace("<<< onAvailabilityPresetChanged()")
 end
 
@@ -130,8 +152,19 @@ end
 ---@param state number New state (1-6)
 local function onPriceMultiplierChanged(_, state)
     Log:trace(">>> onPriceMultiplierChanged(state=%d)", state)
-    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, state)
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, state,
+        RmFmSettings.negotiationEnabledState)
     Log:trace("<<< onPriceMultiplierChanged()")
+end
+
+--- Callback: Negotiation enabled changed
+---@param _ any Unused target (from raiseCallback)
+---@param state number New state (BinaryOption: 1=Off, 2=On)
+local function onNegotiationEnabledChanged(_, state)
+    Log:trace(">>> onNegotiationEnabledChanged(state=%d)", state)
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
+        state)
+    Log:trace("<<< onNegotiationEnabledChanged()")
 end
 
 -- ============================================================================
@@ -170,6 +203,7 @@ function RmFmSettings.initGui()
     -- Find templates by scanning elements
     local sectionHeaderTemplate = nil
     local multiTextOptionTemplate = nil
+    local binaryOptionTemplate = nil
 
     for _, element in pairs(scrollPanel.elements) do
         if element.name == "sectionHeader" and sectionHeaderTemplate == nil then
@@ -179,8 +213,11 @@ function RmFmSettings.initGui()
             if element.elements[1].typeName == "MultiTextOption" and multiTextOptionTemplate == nil then
                 multiTextOptionTemplate = element
             end
+            if element.elements[1].typeName == "BinaryOption" and binaryOptionTemplate == nil then
+                binaryOptionTemplate = element
+            end
         end
-        if sectionHeaderTemplate ~= nil and multiTextOptionTemplate ~= nil then
+        if sectionHeaderTemplate ~= nil and multiTextOptionTemplate ~= nil and binaryOptionTemplate ~= nil then
             break
         end
     end
@@ -216,6 +253,28 @@ function RmFmSettings.initGui()
 
     -- Store reference for state updates in updateGameSettings
     settingsPage.fmAvailabilityControl = availabilityControl
+
+    -- Clone negotiation enabled toggle (BinaryOption: 1=Off, 2=On)
+    local negTemplate = binaryOptionTemplate or multiTextOptionTemplate
+    local negContainer = negTemplate:clone(scrollPanel)
+    negContainer.id = nil
+
+    local negControl = negContainer.elements[1]
+    local negLabel = negContainer.elements[2]
+
+    negLabel:setText(g_i18n:getText("rm_fm_settings_negotiation"))
+    negControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_negotiation_tooltip"))
+    if binaryOptionTemplate == nil then
+        -- Fallback: MultiTextOption if no BinaryOption template found
+        negControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
+    end
+    negControl:setState(RmFmSettings.negotiationEnabledState)
+    negControl.onClickCallback = onNegotiationEnabledChanged
+
+    negContainer:setVisible(true)
+    negContainer:setDisabled(false)
+
+    settingsPage.fmNegotiationControl = negControl
 
     -- Clone price multiplier (MultiTextOption)
     local priceContainer = multiTextOptionTemplate:clone(scrollPanel)
@@ -270,6 +329,10 @@ local function updateGameSettings(settingsPage)
         Log:debug("SETTINGS: Synced price multiplier UI to state %d", RmFmSettings.priceMultiplierState)
     end
 
+    if settingsPage.fmNegotiationControl ~= nil then
+        settingsPage.fmNegotiationControl:setState(RmFmSettings.negotiationEnabledState)
+    end
+
     Log:trace("<<< updateGameSettings()")
 end
 
@@ -286,12 +349,14 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
     local key = "rmFarmlandMarket.settings"
     RmFmSettings.availabilityPresetState = xmlFile:getValue(key .. "#availabilityPreset", 3)
     RmFmSettings.priceMultiplierState = xmlFile:getValue(key .. "#priceMultiplier", 3)
+    RmFmSettings.negotiationEnabledState = xmlFile:getValue(key .. "#negotiationEnabled", 1)
 
-    Log:debug("SETTINGS: Loaded preset=%s (state=%d) multiplier=%.2fx (state=%d)",
+    Log:debug("SETTINGS: Loaded preset=%s (state=%d) multiplier=%.2fx (state=%d) negotiation=%s",
         RmFmSettings.getPresetName(),
         RmFmSettings.availabilityPresetState,
         RmFmSettings.getPriceMultiplier(),
-        RmFmSettings.priceMultiplierState)
+        RmFmSettings.priceMultiplierState,
+        RmFmSettings.isNegotiationEnabled() and "on" or "off")
     Log:info("Settings loaded from savegame")
 
     Log:trace("<<< loadFromXMLFile()")
@@ -311,9 +376,11 @@ function RmFmSettings.saveToXMLFile(xmlFile)
     local key = "rmFarmlandMarket.settings"
     xmlFile:setValue(key .. "#availabilityPreset", RmFmSettings.availabilityPresetState)
     xmlFile:setValue(key .. "#priceMultiplier", RmFmSettings.priceMultiplierState)
+    xmlFile:setValue(key .. "#negotiationEnabled", RmFmSettings.negotiationEnabledState)
 
-    Log:debug("SETTINGS: Saved preset=%d multiplier=%d",
-        RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState)
+    Log:debug("SETTINGS: Saved preset=%d multiplier=%d negotiation=%d",
+        RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
+        RmFmSettings.negotiationEnabledState)
     Log:info("Settings saved")
 
     Log:trace("<<< saveToXMLFile()")
@@ -332,7 +399,8 @@ function RmFmSettings.sendInitialClientState(_, connection)
 
     Log:debug("SYNC: Sending initial settings to joining client")
     connection:sendEvent(
-        RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState)
+        RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
+            RmFmSettings.negotiationEnabledState)
     )
 
     Log:trace("<<< sendInitialClientState()")

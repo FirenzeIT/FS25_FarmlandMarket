@@ -158,7 +158,7 @@ Farmland.updatePrice = Utils.overwrittenFunction(Farmland.updatePrice, function(
     Log:trace("<<< updatePrice override (finalPrice=%.0f)", self.price)
 end)
 
--- Override base price per hectare with multiplier (Phase 2)
+-- Override base price per hectare with multiplier
 FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
     FarmlandManager.getPricePerHa,
     function(self, superFunc)
@@ -175,9 +175,20 @@ FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
 -- BUY FLOW VALIDATION HOOKS
 -- ============================================================================
 
---- Override FarmlandStateEvent:run() to reject purchases of unavailable farmlands
+--- Override FarmlandStateEvent:run() to reject purchases of unavailable farmlands.
+--- Also bypasses availability check for negotiated deals (pendingDeals).
 FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, function(self, superFunc, connection)
     Log:trace(">>> FarmlandStateEvent:run(farmlandId=%d)", self.id)
+
+    -- Bypass: negotiated deal in progress - skip availability check.
+    -- Don't clear pendingDeals here: on listen servers the event fires twice
+    -- (server processing + broadcast back to host-as-client). Cleared in onOwnershipChanged.
+    if RmNegotiationManager.pendingDeals[self.id] then
+        Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass availability)", self.id)
+        superFunc(self, connection)
+        Log:trace("<<< FarmlandStateEvent:run() [negotiated deal]")
+        return
+    end
 
     -- Check availability (server receiving from client)
     if connection:getIsServer() and RmFmSettings.isAvailabilityEnabled() then
@@ -193,24 +204,51 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
     Log:trace("<<< FarmlandStateEvent:run() [allowed]")
 end)
 
---- Override InGameMenuMapFrame:setMapInputContext() to suppress buy button for unavailable farmlands.
---- Intercepts canBuy before the game builds the context bar, preserving all other buttons.
+--- Override InGameMenuMapFrame:setMapInputContext() to manage buy button for farmlands.
+--- When availability is on and negotiation is off: suppress buy for unavailable.
+--- When availability is on and negotiation is on: allow buy for eligible unavailable (unlisted negotiation).
 InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
     InGameMenuMapFrame.setMapInputContext,
     function(self, superFunc, canEnter, canReset, canSellVehicle, canVisit, canSetMarker, removeMarker, canBuy, canSell, canManage)
-        -- Check if current hotspot is an unavailable farmland
         if canBuy and RmFmSettings.isAvailabilityEnabled() then
             local hotspot = self.currentHotspot
             if hotspot ~= nil and hotspot.getFarmland ~= nil then
                 local farmland = hotspot:getFarmland()
                 if farmland ~= nil and not RmFmAvailability.isForSale(farmland.id) then
-                    canBuy = false
-                    Log:debug("AVAIL: Suppressed buy button for unavailable farmland %d", farmland.id)
+                    if RmFmSettings.isNegotiationEnabled()
+                       and RmFmAvailability.isEligibleForAvailability(farmland) then
+                        -- Negotiation on: keep canBuy=true for unlisted negotiation
+                        Log:debug("AVAIL: Allowing buy for unlisted negotiation on farmland %d", farmland.id)
+                    else
+                        -- Negotiation off: suppress buy
+                        canBuy = false
+                        Log:debug("AVAIL: Suppressed buy button for unavailable farmland %d", farmland.id)
+                    end
                 end
             end
         end
 
         superFunc(self, canEnter, canReset, canSellVehicle, canVisit, canSetMarker, removeMarker, canBuy, canSell, canManage)
+
+        -- Relabel BUY/SELL buttons when negotiation is enabled.
+        -- Use .title for direct text override (takes precedence over .text l10n key)
+        -- Always clear/set: previous .title persists on the action object across calls.
+        local actions = InGameMenuMapFrame.ACTIONS
+        if RmFmSettings.isNegotiationEnabled() then
+            if canBuy and self.contextActions[actions.BUY].isActive then
+                self.contextActions[actions.BUY].title = g_i18n:getText("rm_fm_btn_makeOffer")
+            else
+                self.contextActions[actions.BUY].title = nil
+            end
+            if canSell and self.contextActions[actions.SELL].isActive then
+                self.contextActions[actions.SELL].title = g_i18n:getText("rm_fm_btn_negotiateSale")
+            else
+                self.contextActions[actions.SELL].title = nil
+            end
+        else
+            self.contextActions[actions.BUY].title = nil
+            self.contextActions[actions.SELL].title = nil
+        end
     end
 )
 
@@ -226,6 +264,56 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
         if not isFarmland or contextBox == nil then
             return
         end
+
+        -- Cache label + value elements on first find
+        if contextBox.rmFmValueLabel == nil then
+            local farmlandValueEl = contextBox:getDescendantByName("farmlandValue")
+            if farmlandValueEl ~= nil and farmlandValueEl.parent ~= nil then
+                contextBox.rmFmValueElement = farmlandValueEl
+                local valueLabelText = g_i18n:getText("ui_sellValue") .. ":"
+                for _, child in ipairs(farmlandValueEl.parent.elements) do
+                    if child ~= farmlandValueEl and child.getText ~= nil
+                       and child:getText() == valueLabelText then
+                        contextBox.rmFmValueLabel = child
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Determine label + value override based on field state
+        if contextBox.rmFmValueLabel ~= nil then
+            local isOwned = false
+            local farmlandId = nil
+            if hotspot ~= nil and hotspot.getFarmland ~= nil then
+                local fl = hotspot:getFarmland()
+                if fl ~= nil then
+                    farmlandId = fl.id
+                    isOwned = fl.farmId == g_currentMission:getFarmId()
+                end
+            end
+
+            if isOwned and RmFmSettings.isNegotiationEnabled() then
+                -- Owned field with negotiation: "Market value:" with game's farmland.price
+                contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_marketValue") .. ":")
+            elseif not isOwned and farmlandId ~= nil and RmFmSettings.isNegotiationEnabled() then
+                local listingPrice = RmNegotiationManager.getListingPrice(farmlandId)
+                if listingPrice ~= nil then
+                    -- Listed field with negotiation: "List price:" with seller's asking price
+                    contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
+                    if contextBox.rmFmValueElement ~= nil then
+                        contextBox.rmFmValueElement:setText(g_i18n:formatMoney(listingPrice, 0, true, true))
+                    end
+                else
+                    -- Unlisted or no listing price: still show "List price:" for consistency
+                    contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
+                end
+            else
+                -- No negotiation or no farmland: keep vanilla
+                contextBox.rmFmValueLabel:setText(g_i18n:getText("ui_sellValue") .. ":")
+            end
+        end
+
         if not RmFmSettings.isAvailabilityEnabled() then
             return
         end
@@ -241,6 +329,24 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
             contextBox:getDescendantByName("farmlandValue"):setText(
                 g_i18n:getText("rm_fm_notForSale"))
             Log:debug("CONTEXT: Replaced value with 'Not for sale' for farmland %d", farmland.id)
+        end
+
+        -- Show cooldown info if applicable (server only - clients get error on attempt)
+        if g_server ~= nil and RmFmSettings.isNegotiationEnabled() then
+            local playerFarmId = g_currentMission:getFarmId()
+            local cooldownInfo = RmNegotiationManager.getCooldownInfo(farmland.id, playerFarmId)
+            if cooldownInfo ~= nil and cooldownInfo.remaining > 0 then
+                local cooldownText = string.format(
+                    g_i18n:getText("rm_fm_neg_cooldownDisplay"),
+                    cooldownInfo.remaining
+                )
+                contextBox:getDescendantByName("farmlandValue"):setText(
+                    contextBox:getDescendantByName("farmlandValue"):getText() ..
+                    "\n" .. cooldownText
+                )
+                Log:debug("CONTEXT: Added cooldown display for farmland %d (%d periods)",
+                    farmland.id, cooldownInfo.remaining)
+            end
         end
     end
 )
@@ -327,8 +433,7 @@ end)
 --- Apply availability tint to farmland area overlays after standard colors are set.
 --- Red for unavailable, green for available (for sale).
 --- Called as appendedFunction on both build methods.
---- Engine API: setDensityMapVisualizationOverlayStateColor(overlay, map, 0, 0, 0, numChannels, key, r, g, b)
----   where key is the farmlands table key (from pairs()), not farmland.id
+--- NOTE: key param is the farmlands table key (from pairs()), not farmland.id
 ---@param self table MapOverlayGenerator instance
 ---@param selectedFarmland table|nil Currently selected Farmland object
 local function applyAvailabilityOverlayColors(self, selectedFarmland)
@@ -402,6 +507,26 @@ function RmFarmlandMarket.updateAllHotspotColors()
     Log:trace("<<< updateAllHotspotColors()")
 end
 
+--- Refresh map display after ownership or availability changes.
+--- Deferred via Timer.createOneshot(0) to run on the next frame,
+--- after all event processing in the current frame has completed.
+--- Updates hotspot colors, overlay, and re-selects current hotspot to refresh context box.
+function RmFarmlandMarket.refreshMapDisplay()
+    Log:trace(">>> refreshMapDisplay()")
+
+    -- Refresh hotspot colors + flag overlay for rebuild
+    RmFarmlandMarket.updateAllHotspotColors()
+
+    -- Refresh context box for currently selected hotspot
+    local mapFrame = g_inGameMenu ~= nil and g_inGameMenu.pageMapOverview or nil
+    if mapFrame ~= nil and mapFrame.currentHotspot ~= nil then
+        mapFrame:setMapSelectionItem(mapFrame.currentHotspot)
+        Log:debug("DISPLAY: Re-selected current hotspot to refresh context box")
+    end
+
+    Log:trace("<<< refreshMapDisplay()")
+end
+
 -- ============================================================================
 -- DAY CHANGE HANDLER
 -- ============================================================================
@@ -417,6 +542,7 @@ function RmFarmlandMarket.onDayChanged()
     end
 
     RmFmAvailability.evaluateDaily()
+    RmNegotiationManager.ensureListedProfiles()
     Log:trace("<<< onDayChanged()")
 end
 
@@ -639,6 +765,7 @@ function RmFarmlandMarket.registerXmlSchema()
     -- Settings
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#availabilityPreset", "Availability preset state")
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#priceMultiplier", "Price multiplier state")
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiationEnabled", "Negotiation enabled state")
 
     -- Availability entries
     local entryPath = "rmFarmlandMarket.availability.farmland(?)"
@@ -646,6 +773,22 @@ function RmFarmlandMarket.registerXmlSchema()
     schema:register(XMLValueType.BOOL, entryPath .. "#isForSale", "For sale flag")
     schema:register(XMLValueType.INT, entryPath .. "#expiryDay", "Expiry day")
     schema:register(XMLValueType.INT, entryPath .. "#listingDay", "Listing day")
+
+    -- Negotiations: seller profiles + cooldowns
+    local negPath = "rmFarmlandMarket.negotiations.farmland(?)"
+    schema:register(XMLValueType.INT, negPath .. "#id", "Farmland ID")
+    schema:register(XMLValueType.STRING, negPath .. ".sellerProfile#mode", "Profile mode")
+    schema:register(XMLValueType.STRING, negPath .. ".sellerProfile#preset", "Profile preset")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#marketValue", "Market value")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#anchorPrice", "Anchor price")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#listingPrice", "Listing price")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#reservation", "Reservation price")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#stubbornness", "Stubbornness factor")
+    schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#rejectFloor", "Reject floor price")
+    local cdPath = negPath .. ".cooldown(?)"
+    schema:register(XMLValueType.INT, cdPath .. "#farmId", "Farm ID")
+    schema:register(XMLValueType.INT, cdPath .. "#remaining", "Remaining cooldown periods")
+    schema:register(XMLValueType.STRING, cdPath .. "#lastOutcome", "Last negotiation outcome")
 
     RmFarmlandMarket.xmlSchema = schema
     Log:debug("XML schema registered")
@@ -680,6 +823,10 @@ local function loadFromSavegame()
     -- Delegate to modules
     RmFmSettings.loadFromXMLFile(xmlFile)
     RmFmAvailability.loadFromXMLFile(xmlFile)
+    RmNegotiationManager.loadFromXMLFile(xmlFile)
+
+    -- Write listing prices from restored profiles onto availability entries
+    RmNegotiationManager.ensureListedProfiles()
 
     xmlFile:delete()
     Log:info("Savegame loaded from rm_FarmlandMarket.xml")
@@ -716,6 +863,7 @@ local function saveToSavegame()
     -- Delegate to modules
     RmFmSettings.saveToXMLFile(xmlFile)
     RmFmAvailability.saveToXMLFile(xmlFile)
+    RmNegotiationManager.saveToXMLFile(xmlFile)
 
     xmlFile:save()
     xmlFile:delete()
@@ -798,6 +946,7 @@ end
 local function onStartMission()
     RmFarmlandMarket.updateAllFarmlandPrices()
     RmFmAvailability.initialize()
+    RmNegotiationManager.ensureListedProfiles()
     Log:info("FarmlandMarket initialization complete")
 end
 
@@ -848,6 +997,16 @@ Mission00.loadItemsFinished = Utils.appendedFunction(
 FSCareerMissionInfo.saveToXMLFile = Utils.appendedFunction(
     FSCareerMissionInfo.saveToXMLFile,
     saveToSavegame
+)
+
+-- Hook into ownership changes to refresh map display (deferred to next frame)
+FarmlandManager.setLandOwnership = Utils.appendedFunction(
+    FarmlandManager.setLandOwnership,
+    function(_, _, _, isFromSavegame)
+        if not isFromSavegame then
+            Timer.createOneshot(0, RmFarmlandMarket.refreshMapDisplay)
+        end
+    end
 )
 
 -- Hook into initial client state sync (send availability to joining clients)

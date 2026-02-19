@@ -84,8 +84,9 @@ function RmAvailabilitySyncEvent:writeStream(streamId, connection)
         streamWriteBool(streamId, data.isForSale)
         streamWriteInt32(streamId, data.expiryDay)
         streamWriteInt32(streamId, data.listingDay)
-        Log:trace("  SYNC: farmland=%d isForSale=%s expiryDay=%d listingDay=%d",
-            farmlandId, tostring(data.isForSale), data.expiryDay, data.listingDay)
+        streamWriteInt32(streamId, data.listingPrice or 0)
+        Log:trace("  SYNC: farmland=%d isForSale=%s expiryDay=%d listingDay=%d listingPrice=%d",
+            farmlandId, tostring(data.isForSale), data.expiryDay, data.listingDay, data.listingPrice or 0)
     end
 
     Log:trace("<<< RmAvailabilitySyncEvent:writeStream()")
@@ -108,13 +109,15 @@ function RmAvailabilitySyncEvent:readStream(streamId, connection)
         local isForSale = streamReadBool(streamId)
         local expiryDay = streamReadInt32(streamId)
         local listingDay = streamReadInt32(streamId)
+        local listingPrice = streamReadInt32(streamId)
         self.availability[farmlandId] = {
             isForSale = isForSale,
             expiryDay = expiryDay,
             listingDay = listingDay,
+            listingPrice = listingPrice > 0 and listingPrice or nil,
         }
-        Log:trace("  SYNC: farmland=%d isForSale=%s expiryDay=%d listingDay=%d",
-            farmlandId, tostring(isForSale), expiryDay, listingDay)
+        Log:trace("  SYNC: farmland=%d isForSale=%s expiryDay=%d listingDay=%d listingPrice=%d",
+            farmlandId, tostring(isForSale), expiryDay, listingDay, listingPrice)
     end
 
     self:run(connection)
