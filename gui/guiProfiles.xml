@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<GUIProfiles>
+
+    <!-- History list container (top-aligned, matches ASC pattern) -->
+    <Profile name="rmNegHistoryList" extends="emptyPanel" with="anchorStretchingYLeft pivotTopLeft">
+    </Profile>
+
+    <!-- History list row: 32px, FS25 standard alternating dark grey -->
+    <Profile name="rmNegHistoryListItem" extends="baseReference" with="anchorTopStretchingX">
+        <height value="32px"/>
+        <imageSliceId value="gui.empty"/>
+        <imageColor value="0.10 0.10 0.10 1"/>
+        <alternateBackgroundColor value="$preset_colorTransparent"/>
+    </Profile>
+
+    <!-- Round column (R1, R2)  - dimmed, center-aligned, 15px -->
+    <Profile name="rmNegRoundText" extends="fs25_textDefault" with="anchorStretchingYLeft">
+        <width value="50px"/>
+        <textAlignment value="center"/>
+        <textColor value="$preset_colorWhite_50"/>
+        <textSelectedColor value="$preset_colorWhite_50"/>
+    </Profile>
+
+    <!-- Party column (You, Seller)  - standard list text, 15px -->
+    <Profile name="rmNegPartyText" extends="fs25_textDarkHighlight" with="anchorStretchingYLeft">
+        <width value="140px"/>
+        <textSelectedColor value="$preset_fs25_colorMainLight"/>
+    </Profile>
+
+    <!-- Amount column (€ 85,000)  - bold, right-aligned, green highlight, 16px -->
+    <Profile name="rmNegAmountText" extends="fs25_textDarkHighlight" with="anchorStretchingYLeft">
+        <width value="390px"/>
+        <textSize value="16px"/>
+        <textBold value="true"/>
+        <textAlignment value="right"/>
+        <textColor value="$preset_fs25_colorMainHighlight"/>
+        <textSelectedColor value="$preset_fs25_colorMainHighlight"/>
+    </Profile>
+
+    <!-- Status text area  - centered, 16px (matches fs25_dialogText) -->
+    <Profile name="rmNegStatusText" extends="fs25_textDefault" with="anchorTopLeft">
+        <textSize value="16px"/>
+        <textAlignment value="center"/>
+        <textVerticalAlignment value="middle"/>
+    </Profile>
+
+    <!-- Header info text  - dimmed secondary info, 15px, centered -->
+    <Profile name="rmNegHeaderInfo" extends="fs25_textDefault" with="anchorTopLeft">
+        <textColor value="$preset_colorWhite_50"/>
+        <textAlignment value="center"/>
+    </Profile>
+
+    <!-- Secondary button (MENU_EXTRA_1 input action)  - not a global FS25 profile -->
+    <Profile name="buttonExtra1" extends="buttonOK">
+        <inputAction value="MENU_EXTRA_1"/>
+    </Profile>
+
+    <!-- Text input for offer amounts  - light text on dark dialog bg -->
+    <Profile name="rmNegTextInput" extends="fs25_textInput" with="anchorTopLeft">
+        <textBold value="true"/>
+        <textSize value="16px"/>
+        <textColor value="$preset_fs25_colorMainLight"/>
+    </Profile>
+
+</GUIProfiles>

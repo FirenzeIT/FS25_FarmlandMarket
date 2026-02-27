@@ -381,10 +381,10 @@ function RmLogging:consoleSetLogLevel(nameArg, levelArg)
 end
 
 -- ============================================================================
--- Console Command Registration
+-- Console Command Registration (self-contained via mod event listener)
 -- ============================================================================
 
----Register console commands (call this from mission start hook)
+---Register console commands - called automatically via loadMap listener
 ---Safe to call multiple times - will only register once
 function RmLogging.registerConsoleCommands()
     if RmLogging._consoleCommandsRegistered then
@@ -396,7 +396,7 @@ function RmLogging.registerConsoleCommands()
     RmLogging._consoleCommandsRegistered = true
 end
 
----Unregister console commands (call this from mission delete hook)
+---Unregister console commands - called automatically via deleteMap listener
 function RmLogging.unregisterConsoleCommands()
     if not RmLogging._consoleCommandsRegistered then
         return
@@ -405,4 +405,21 @@ function RmLogging.unregisterConsoleCommands()
     removeConsoleCommand("rmShowLoglevel")
     removeConsoleCommand("rmSetLoglevel")
     RmLogging._consoleCommandsRegistered = false
+end
+
+-- ============================================================================
+-- Self-contained Lifecycle Hooks
+-- ============================================================================
+
+function RmLogging.loadMap()
+    RmLogging.registerConsoleCommands()
+end
+
+function RmLogging.deleteMap()
+    RmLogging.unregisterConsoleCommands()
+end
+
+if not RmLogging._listenerRegistered then
+    addModEventListener(RmLogging)
+    RmLogging._listenerRegistered = true
 end

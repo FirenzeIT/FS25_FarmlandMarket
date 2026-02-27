@@ -91,6 +91,7 @@ function RmNegotiationResultEvent:writeStream(streamId, connection)
             else
                 streamWriteFloat32(streamId, entry.offer or 0)
                 streamWriteFloat32(streamId, entry.counter or 0)
+                streamWriteBool(streamId, entry.counter ~= nil)
             end
         end
     end
@@ -161,8 +162,9 @@ function RmNegotiationResultEvent:readStream(streamId, connection)
                 }
             else
                 local offer = streamReadFloat32(streamId)
-                local counter = streamReadFloat32(streamId)
-                s.offers[i] = { round = round, offer = offer, counter = counter }
+                local counterVal = streamReadFloat32(streamId)
+                local hasCounter = streamReadBool(streamId)
+                s.offers[i] = { round = round, offer = offer, counter = hasCounter and counterVal or nil }
             end
         end
 

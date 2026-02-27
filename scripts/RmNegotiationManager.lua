@@ -495,17 +495,31 @@ local function doSubmitOffer(farmId, amount)
     elseif result.action == "rejected" then
         return completeSession(farmId, RmNegotiationEngine.OUTCOME_REJECTED, nil)
     elseif result.action == "converged_offer" then
+        local counter = result.counter
+        -- Monotonic: seller counter must not exceed previous counter
+        if session.lastCounter ~= nil and counter >= session.lastCounter then
+            local gap = session.lastCounter - amount
+            local step = math.max(math.floor(gap * 0.01), 1)
+            counter = math.max(session.lastCounter - step, amount + 1)
+        end
         session.state = "proposal"
         session.pendingProposal = {
             type = "convergence",
             price = result.price,
-            counter = result.counter,
+            counter = counter,
         }
-        session.offers[lastOfferIdx].counter = result.counter
+        session.offers[lastOfferIdx].counter = counter
         return RmNegotiationManager.createSnapshot(session)
     elseif result.action == "countered" then
-        session.offers[lastOfferIdx].counter = result.counter
-        session.lastCounter = result.counter
+        local counter = result.counter
+        -- Monotonic: seller counter must not exceed previous counter
+        if session.lastCounter ~= nil and counter >= session.lastCounter then
+            local gap = session.lastCounter - amount
+            local step = math.max(math.floor(gap * 0.01), 1)
+            counter = math.max(session.lastCounter - step, amount + 1)
+        end
+        session.offers[lastOfferIdx].counter = counter
+        session.lastCounter = counter
         session.round = session.round + 1
         return RmNegotiationManager.createSnapshot(session)
     end
@@ -569,17 +583,31 @@ local function doSubmitAsk(farmId, amount)
     elseif result.action == "npc_walked" then
         return completeSession(farmId, RmNegotiationEngine.OUTCOME_NPC_WALKED, nil)
     elseif result.action == "converged_offer" then
-        session.offers[lastOfferIdx].npcResponse = result.npcOffer
+        local npcOffer = result.npcOffer
+        -- Monotonic: NPC buyer offer must not drop below previous offer
+        if session.lastCounter ~= nil and npcOffer <= session.lastCounter then
+            local gap = amount - session.lastCounter
+            local step = math.max(math.floor(gap * 0.01), 1)
+            npcOffer = math.min(session.lastCounter + step, amount - 1)
+        end
+        session.offers[lastOfferIdx].npcResponse = npcOffer
         session.state = "proposal"
         session.pendingProposal = {
             type = "convergence",
             price = result.price,
-            counter = result.npcOffer,
+            counter = npcOffer,
         }
         return RmNegotiationManager.createSnapshot(session)
     elseif result.action == "countered" then
-        session.offers[lastOfferIdx].npcResponse = result.npcOffer
-        session.lastCounter = result.npcOffer
+        local npcOffer = result.npcOffer
+        -- Monotonic: NPC buyer offer must not drop below previous offer
+        if session.lastCounter ~= nil and npcOffer <= session.lastCounter then
+            local gap = amount - session.lastCounter
+            local step = math.max(math.floor(gap * 0.01), 1)
+            npcOffer = math.min(session.lastCounter + step, amount - 1)
+        end
+        session.offers[lastOfferIdx].npcResponse = npcOffer
+        session.lastCounter = npcOffer
         session.round = session.round + 1
         return RmNegotiationManager.createSnapshot(session)
     end

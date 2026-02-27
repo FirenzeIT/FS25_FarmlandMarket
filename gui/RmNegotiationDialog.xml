@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<GUI onOpen="onOpen" onClose="onClose">
+    <GuiElement profile="newLayer"/>
+    <Bitmap profile="dialogFullscreenBg" id="dialogBg"/>
+    <GuiElement profile="fs25_dialogBg" id="dialogElement" size="750px 550px">
+        <ThreePartBitmap profile="fs25_dialogBgMiddle"/>
+        <ThreePartBitmap profile="fs25_dialogBgTop"/>
+        <ThreePartBitmap profile="fs25_dialogBgBottom"/>
+        <GuiElement profile="fs25_dialogContentContainer">
+
+            <!-- Title -->
+            <Text profile="dialogTitle" text="" id="dialogTitleElement" position="0px -30px"/>
+
+            <!-- Header info (area, market value) -->
+            <Text profile="rmNegHeaderInfo" text="" id="headerInfoElement" position="50px -65px" size="620px 20px"/>
+
+            <!-- History list -->
+            <SmoothList profile="rmNegHistoryList" id="historyList" position="50px -95px" size="610px 240px"
+                        handleFocus="false" focusChangeTop="nil" focusChangeBottom="nil">
+                <ListItem profile="rmNegHistoryListItem" name="historyRowTemplate" size="595px 32px">
+                    <Text profile="rmNegRoundText" position="5px 0px" name="roundText"/>
+                    <Text profile="rmNegPartyText" position="55px 0px" name="partyText"/>
+                    <Text profile="rmNegAmountText" position="200px 0px" name="amountText"/>
+                </ListItem>
+            </SmoothList>
+
+            <!-- Scrollbar for history list -->
+            <ThreePartBitmap profile="fs25_listSliderBox" position="665px -95px" size="12px 240px">
+                <Slider profile="fs25_listSlider" size="6px 232px" dataElementId="historyList" id="historySlider"/>
+            </ThreePartBitmap>
+
+            <!-- Status text area -->
+            <Text profile="rmNegStatusText" text="" id="statusTextElement" position="50px -345px" size="620px 50px"/>
+
+            <!-- Text input for offer amounts (shown/hidden by Lua) -->
+            <TextInput profile="rmNegTextInput" id="textInputElement" position="270px -405px" size="180px 40px"
+                       maxCharacters="9" onIsUnicodeAllowed="onInputIsUnicodeAllowed">
+                <ThreePartBitmap profile="fs25_textInputBg"/>
+                <Bitmap profile="fs25_textInputIconBox">
+                    <Bitmap profile="fs25_textInputIcon"/>
+                </Bitmap>
+            </TextInput>
+
+        </GuiElement>
+
+        <!-- Footer bar: Walk Away + dynamic action buttons (MultiOptionDialog pattern) -->
+        <!-- Order: Esc(left) | secondary(middle) | Enter/primary(right) -->
+        <BoxLayout profile="fs25_dialogButtonBox" id="footerButtonBox" size="700px 60px">
+            <Button profile="buttonBack" text="$l10n_rm_fm_neg_walkAway" id="bottomBarButton" onClick="onClickBottomBar">
+                <Bitmap profile="fs25_dialogButtonBoxSeparator" name="separator"/>
+            </Button>
+            <Button profile="buttonExtra1" text="" id="secondaryActionButton" onClick="onClickSecondaryAction">
+                <Bitmap profile="fs25_dialogButtonBoxSeparator" name="separator"/>
+            </Button>
+            <Button profile="buttonOK" text="" id="primaryActionButton" onClick="onClickPrimaryAction">
+                <Bitmap profile="fs25_dialogButtonBoxSeparator" name="separator"/>
+            </Button>
+        </BoxLayout>
+    </GuiElement>
+</GUI>

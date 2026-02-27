@@ -750,6 +750,95 @@ function RmFarmlandMarket:consoleFmInspect(farmlandIdStr)
         farmlandId, data.basePrice, data.cropValue, data.finalPrice)
 end
 
+--- Console command: Test negotiation dialog with mock data
+--- Usage: fmTestDialog [buy|sell|unlisted] [stateNum]
+---   mode: buy (default), sell, unlisted
+---   stateNum: 1=opening, 2=input, 3=acceptCounter, 4=acceptWalk, 5=proposal, 6=completed, 7=waiting
+function RmFarmlandMarket:consoleFmTestDialog(mode, stateNum)
+    local dialog = RmNegotiationDialog.getInstance()
+    if dialog == nil then
+        return "Dialog not registered"
+    end
+
+    mode = mode or "buy"
+    stateNum = tonumber(stateNum)
+
+    -- If only changing state on an already-open dialog
+    if stateNum ~= nil and dialog.currentSnapshot ~= nil then
+        dialog:setActionState(stateNum, { statusText = "Test state " .. stateNum })
+        return string.format("Switched to state %d", stateNum)
+    end
+
+    -- Find first farmland for realistic data
+    local farmlandId = 1
+    for _, fl in pairs(g_farmlandManager:getFarmlands()) do
+        farmlandId = fl.id
+        break
+    end
+
+    -- Build mock snapshot
+    local engineMode
+    if mode == "sell" then
+        engineMode = RmNegotiationEngine.MODE_SELL
+    elseif mode == "unlisted" then
+        engineMode = RmNegotiationEngine.MODE_UNLISTED_BUY
+    else
+        engineMode = RmNegotiationEngine.MODE_LISTED_BUY
+    end
+
+    local snapshot = {
+        farmlandId = farmlandId,
+        mode = engineMode,
+        round = 3,
+        state = "active",
+        anchorPrice = 85000,
+        rejectFloor = 60000,
+        lastCounter = 78000,
+        offers = {},
+        pendingProposal = nil,
+        outcome = nil,
+        finalPrice = nil,
+    }
+
+    -- Build mock offer history based on mode
+    if engineMode == RmNegotiationEngine.MODE_SELL then
+        snapshot.offers = {
+            { round = 1, npcOffer = 72000, playerAsk = 95000, npcResponse = 78000 },
+            { round = 2, npcOffer = 78000, playerAsk = 88000, npcResponse = 82000 },
+        }
+    else
+        snapshot.offers = {
+            { round = 1, offer = 65000, counter = 82000 },
+            { round = 2, offer = 75000, counter = 78000 },
+        }
+    end
+
+    -- Open and populate
+    g_gui:showDialog("RmNegotiationDialog")
+    dialog:updateFromSnapshot(snapshot)
+
+    -- Set action state
+    local targetState = stateNum or RmNegotiationDialog.STATE_ACCEPT_COUNTER
+    local statusText = nil
+    if targetState == RmNegotiationDialog.STATE_COMPLETED then
+        statusText = "Deal completed at $80,000!"
+    elseif targetState == RmNegotiationDialog.STATE_OFFER_INPUT then
+        statusText = engineMode == RmNegotiationEngine.MODE_SELL
+            and "Enter your counter-ask:" or "Enter your offer:"
+    end
+    dialog:setActionState(targetState, { statusText = statusText })
+
+    -- Wire dummy callbacks so buttons don't crash
+    dialog.onMakeOffer = function() print("  [TEST] onMakeOffer") end
+    dialog.onSubmitOffer = function(amount) print(string.format("  [TEST] onSubmitOffer(%d)", amount)) end
+    dialog.onAcceptPrice = function() print("  [TEST] onAcceptPrice") end
+    dialog.onWalkAway = function() print("  [TEST] onWalkAway") end
+    dialog.onAcceptProposal = function() print("  [TEST] onAcceptProposal") end
+    dialog.onDeclineProposal = function() print("  [TEST] onDeclineProposal") end
+
+    return string.format("Opened dialog: mode=%s state=%d farmland=%d", mode, targetState, farmlandId)
+end
+
 -- ============================================================================
 -- SAVEGAME PERSISTENCE
 -- ============================================================================
@@ -879,11 +968,14 @@ end
 local function onLoadMapFinished()
     Log:info("Map loaded, initializing FarmlandMarket")
 
+    -- F11: Register negotiation dialog GUI (before console commands per tech-spec)
+    RmNegotiationDialog.register()
+
     -- Register console commands
-    RmLogging.registerConsoleCommands()
     addConsoleCommand("fmList", "List all farmlands with prices", "consoleFmList", RmFarmlandMarket)
     addConsoleCommand("fmInspect", "Inspect farmland price details", "consoleFmInspect", RmFarmlandMarket, "farmlandId")
     addConsoleCommand("fmAvail", "Show availability status", "consoleFmAvail", RmFarmlandMarket)
+    addConsoleCommand("fmTestDialog", "Test negotiation dialog (buy|sell|unlisted|state N)", "consoleFmTestDialog", RmFarmlandMarket, "mode stateNum")
 
     -- Subscribe to day change events
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmFarmlandMarket.onDayChanged, RmFarmlandMarket)
@@ -959,11 +1051,17 @@ local function onDeleteMap()
     -- Clean up availability state
     RmFmAvailability.reset()
 
+    -- Clean up negotiation dialog
+    local dialog = RmNegotiationDialog.getInstance()
+    if dialog ~= nil then
+        dialog:reset()
+    end
+
     -- Remove console commands
     removeConsoleCommand("fmList")
     removeConsoleCommand("fmInspect")
     removeConsoleCommand("fmAvail")
-    RmLogging.unregisterConsoleCommands()
+    removeConsoleCommand("fmTestDialog")
 
     -- Clear cached data
     RmFarmlandMarket.priceData = {}

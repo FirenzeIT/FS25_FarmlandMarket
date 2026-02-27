@@ -4,7 +4,7 @@
 
     Orchestrates:
     - Buy/sell intercepts on InGameMenuMapFrame
-    - Multi-round dialog flow (TextInputDialog, YesNoDialog, InfoDialog)
+    - Custom negotiation dialog (RmNegotiationDialog) for multi-round flow
     - Host/client async result handling
     - Purchase/sale execution via FarmlandStateEvent
 
@@ -52,14 +52,11 @@ RmNegotiationUI.currentMode = nil  -- "listed_buy"|"unlisted_buy"|"sell"
 -- =============================================================================
 
 local handleResult
-local showBuyRound
-local showBuyAmountInput
-local showBuyAcceptOrCounter
-local showSellRound
-local showSellAmountInput
-local showSellAcceptOrCounter
+local openDialog
+local updateDialog
+local setupDialogCallbacks
+local setActionStateFromSnapshot
 local executeDeal
-local showAmountInput
 
 -- =============================================================================
 -- INTERNAL HELPERS (local)
@@ -93,46 +90,6 @@ local function callManagerAPI(apiFn, args, onResult)
     Log:trace("<<< callManagerAPI()")
 end
 
---- Show an info dialog with a message and optional callback.
----@param text string Dialog message
----@param onClose function|nil Callback when closed
-local function showInfo(text, onClose)
-    InfoDialog.show(text, onClose or function() end)
-end
-
---- Show a yes/no dialog and invoke callback with boolean.
----@param text string Dialog prompt
----@param onAnswer function Callback: function(accepted)
----@param yesText string|nil Custom yes button text
----@param noText string|nil Custom no button text
-local function showYesNo(text, onAnswer, yesText, noText)
-    YesNoDialog.show(function(yes)
-        onAnswer(yes)
-    end, nil, text, nil, yesText, noText)
-end
-
---- Show a text input dialog for entering a monetary amount.
----@param prompt string Dialog prompt
----@param defaultText string Default input value
----@param onInput function Callback: function(amount) - nil if cancelled
----@param confirmText string|nil Custom confirm button text
-showAmountInput = function(prompt, defaultText, onInput, confirmText)
-    TextInputDialog.show(function(text, confirmed)
-        if not confirmed or text == nil or text == "" then
-            onInput(nil)
-            return
-        end
-        local amount = tonumber(text)
-        if amount == nil or amount <= 0 then
-            showInfo(g_i18n:getText("rm_fm_neg_invalidAmount"), function()
-                showAmountInput(prompt, defaultText, onInput, confirmText)
-            end)
-            return
-        end
-        onInput(math.floor(amount))
-    end, nil, defaultText, prompt, nil, 12, confirmText)
-end
-
 --- Format a price for display.
 ---@param amount number
 ---@return string
@@ -140,305 +97,345 @@ local function formatPrice(amount)
     return g_i18n:formatMoney(amount, 0, true, true)
 end
 
+--- Close the negotiation dialog if it is currently open.
+local function closeNegotiationDialog()
+    local dialog = RmNegotiationDialog.getInstance()
+    if dialog ~= nil and dialog.isOpen then
+        dialog:close()
+    end
+end
+
+--- Get the display name of the NPC owner of a farmland.
+--- Returns the NPC title (e.g. "Walter") or the generic "Seller" l10n string as fallback.
+---@param farmlandId number
+---@return string
+local function getOwnerDisplayName(farmlandId)
+    local farmland = g_farmlandManager:getFarmlandById(farmlandId)
+    if farmland ~= nil then
+        local npc = farmland:getNPC()
+        if npc ~= nil and npc.title ~= nil then
+            return npc.title
+        end
+    end
+    return g_i18n:getText("rm_fm_neg_dlg_seller")
+end
+
+--- Send cancel request to server (fire-and-forget).
+--- On host, cancels directly. On client, sends event for server-side lock/session cleanup.
+---@param farmId number
+local function sendCancelToServer(farmId)
+    if g_server ~= nil then
+        RmNegotiationManager.cancelSession(farmId)
+    elseif g_client ~= nil then
+        g_client:getServerConnection():sendEvent(
+            RmNegotiationRequestEvent.new("cancel", 0, 0, false, "")
+        )
+    end
+end
+
+-- =============================================================================
+-- DIALOG CONTROLLER FUNCTIONS
+-- =============================================================================
+
+--- Open the negotiation dialog with a snapshot.
+---@param snapshot table Session snapshot
+openDialog = function(snapshot)
+    Log:trace(">>> openDialog(farmland=%d, mode=%s)", snapshot.farmlandId, snapshot.mode)
+    local dialog = RmNegotiationDialog.getInstance()
+    if dialog == nil then
+        Log:error("RmNegotiationDialog not registered")
+        return
+    end
+    setupDialogCallbacks(dialog)
+    -- showDialog FIRST: onOpen() clears all visual state (buttons, status text, history)
+    -- Then apply snapshot data so it isn't wiped by the cleanup
+    g_gui:showDialog("RmNegotiationDialog")
+    dialog:updateFromSnapshot(snapshot)
+    setActionStateFromSnapshot(dialog, snapshot)
+end
+
+--- Update an already-open negotiation dialog with a new snapshot.
+---@param snapshot table Session snapshot
+updateDialog = function(snapshot)
+    Log:trace(">>> updateDialog(farmland=%d, state=%s)", snapshot.farmlandId, snapshot.state)
+    local dialog = RmNegotiationDialog.getInstance()
+    if dialog == nil then return end
+    dialog:updateFromSnapshot(snapshot)
+    setActionStateFromSnapshot(dialog, snapshot)
+end
+
+--- Map snapshot state to dialog action state.
+---@param dialog RmNegotiationDialog
+---@param snapshot table Session snapshot
+setActionStateFromSnapshot = function(dialog, snapshot)
+    local maxRounds = RmNegotiationEngine.getMaxRounds()
+    local mode = snapshot.mode
+    local state = snapshot.state
+    local round = snapshot.round
+    -- Resolve NPC owner name for buy modes
+    local ownerName = (mode ~= RmNegotiationEngine.MODE_SELL)
+        and getOwnerDisplayName(snapshot.farmlandId) or nil
+
+    if state == "completed" then
+        local msg = RmNegotiationUI.getCompletedMessage(snapshot, ownerName)
+        dialog:setActionState(RmNegotiationDialog.STATE_COMPLETED, { statusText = msg })
+        return
+    end
+
+    if state == "proposal" then
+        local proposal = snapshot.pendingProposal
+        if proposal == nil then
+            Log:warning("setActionStateFromSnapshot: proposal state but no pendingProposal")
+            return
+        end
+        local promptKey = proposal.type == "convergence"
+            and "rm_fm_neg_convergence" or "rm_fm_neg_lastDitch"
+        local msg = string.format(g_i18n:getText(promptKey),
+            ownerName or "", formatPrice(proposal.price))
+        dialog:setActionState(RmNegotiationDialog.STATE_PROPOSAL, { statusText = msg })
+        return
+    end
+
+    -- state == "active"
+    if mode == RmNegotiationEngine.MODE_LISTED_BUY then
+        if round == 1 and #snapshot.offers == 0 then
+            -- Opening: player views listing before making offer
+            local msg = string.format(g_i18n:getText("rm_fm_neg_listedOpening"),
+                formatPrice(snapshot.anchorPrice))
+            dialog:setActionState(RmNegotiationDialog.STATE_OPENING, { statusText = msg })
+        elseif round > maxRounds then
+            -- Final round exhausted
+            local msg = string.format(g_i18n:getText("rm_fm_neg_roundsExhausted"),
+                ownerName, formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_WALK, { statusText = msg })
+        elseif round == 1 then
+            -- Round 1 after Make Offer clicked: player needs to enter offer
+            local msg = string.format(g_i18n:getText("rm_fm_neg_listedOpening"),
+                formatPrice(snapshot.anchorPrice))
+            dialog:setActionState(RmNegotiationDialog.STATE_OFFER_INPUT, { statusText = msg })
+        else
+            -- Rounds 2+: seller countered, player can accept or counter
+            local msg = string.format(g_i18n:getText("rm_fm_neg_sellerCounters"),
+                ownerName, formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_COUNTER, { statusText = msg })
+        end
+
+    elseif mode == RmNegotiationEngine.MODE_UNLISTED_BUY then
+        if round == 1 and #snapshot.offers == 0 then
+            -- Unlisted opening: owner demands a price
+            local msg = string.format(g_i18n:getText("rm_fm_neg_unlistedOpening"),
+                ownerName, formatPrice(snapshot.anchorPrice))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_COUNTER, { statusText = msg })
+        elseif round > maxRounds then
+            local msg = string.format(g_i18n:getText("rm_fm_neg_roundsExhausted"),
+                ownerName, formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_WALK, { statusText = msg })
+        else
+            local msg = string.format(g_i18n:getText("rm_fm_neg_sellerCounters"),
+                ownerName, formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_COUNTER, { statusText = msg })
+        end
+
+    elseif mode == RmNegotiationEngine.MODE_SELL then
+        if round == 1 and #snapshot.offers == 0 then
+            -- Sell opening: NPC makes first offer
+            local msg = string.format(g_i18n:getText("rm_fm_neg_npcOpening"),
+                formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_COUNTER, { statusText = msg })
+        elseif round > maxRounds then
+            local msg = string.format(g_i18n:getText("rm_fm_neg_sellRoundsExhausted"),
+                formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_WALK, { statusText = msg })
+        else
+            local msg = string.format(g_i18n:getText("rm_fm_neg_npcRaises"),
+                formatPrice(snapshot.lastCounter))
+            dialog:setActionState(RmNegotiationDialog.STATE_ACCEPT_COUNTER, { statusText = msg })
+        end
+    end
+end
+
+--- Wire dialog callbacks to Manager API calls.
+---@param dialog RmNegotiationDialog
+setupDialogCallbacks = function(dialog)
+    local farmId = RmNegotiationUI.currentFarmId
+    local mode = RmNegotiationUI.currentMode
+
+    dialog.onMakeOffer = function()
+        -- Transition from STATE_OPENING to STATE_OFFER_INPUT (no Manager call)
+        dialog.previousButtonState = RmNegotiationDialog.STATE_OPENING
+        dialog.previousStatusText = dialog.statusTextElement ~= nil and dialog.statusTextElement:getText() or nil
+        dialog:setActionState(RmNegotiationDialog.STATE_OFFER_INPUT, {
+            statusText = g_i18n:getText("rm_fm_neg_enterOffer")
+        })
+    end
+
+    dialog.onSubmitOffer = function(amount)
+        local apiFn = (mode == RmNegotiationEngine.MODE_SELL)
+            and RmNegotiationManager.submitAsk
+            or RmNegotiationManager.submitOffer
+        callManagerAPI(apiFn, { farmId, amount }, handleResult)
+        if g_server == nil then
+            dialog:setActionState(RmNegotiationDialog.STATE_WAITING,
+                { statusText = g_i18n:getText("rm_fm_neg_dlg_waiting") })
+        end
+    end
+
+    dialog.onAcceptPrice = function()
+        local snap = dialog.currentSnapshot
+        local amount = snap.lastCounter or snap.anchorPrice
+        local apiFn = (mode == RmNegotiationEngine.MODE_SELL)
+            and RmNegotiationManager.submitAsk
+            or RmNegotiationManager.submitOffer
+        callManagerAPI(apiFn, { farmId, amount }, handleResult)
+        if g_server == nil then
+            dialog:setActionState(RmNegotiationDialog.STATE_WAITING,
+                { statusText = g_i18n:getText("rm_fm_neg_dlg_waiting") })
+        end
+    end
+
+    dialog.onWalkAway = function()
+        if mode == RmNegotiationEngine.MODE_SELL then
+            -- Sell mode: cancel without cooldown (fire-and-forget to server)
+            sendCancelToServer(farmId)
+            dialog:close()
+            RmNegotiationUI.clearState()
+        else
+            -- Buy mode: action depends on session state
+            if dialog.currentState == RmNegotiationDialog.STATE_PROPOSAL then
+                -- Walking away from a proposal = decline it (triggers cooldown)
+                callManagerAPI(RmNegotiationManager.respondToProposal, { farmId, false }, handleResult)
+            else
+                -- Normal walkaway (cooldown + possible last-ditch)
+                callManagerAPI(RmNegotiationManager.walkaway, { farmId }, handleResult)
+            end
+            if g_server == nil then
+                dialog:setActionState(RmNegotiationDialog.STATE_WAITING,
+                    { statusText = g_i18n:getText("rm_fm_neg_dlg_waiting") })
+            end
+        end
+    end
+
+    dialog.onAcceptProposal = function()
+        callManagerAPI(RmNegotiationManager.respondToProposal, { farmId, true }, handleResult)
+        if g_server == nil then
+            dialog:setActionState(RmNegotiationDialog.STATE_WAITING,
+                { statusText = g_i18n:getText("rm_fm_neg_dlg_waiting") })
+        end
+    end
+
+    dialog.onDeclineProposal = function()
+        callManagerAPI(RmNegotiationManager.respondToProposal, { farmId, false }, handleResult)
+        if g_server == nil then
+            dialog:setActionState(RmNegotiationDialog.STATE_WAITING,
+                { statusText = g_i18n:getText("rm_fm_neg_dlg_waiting") })
+        end
+    end
+end
+
+--- Map a completed snapshot outcome to a display message.
+--- Module-level for testability.
+---@param snapshot table Completed session snapshot
+---@param ownerName string|nil NPC owner display name (buy modes only)
+---@return string
+function RmNegotiationUI.getCompletedMessage(snapshot, ownerName)
+    local outcome = snapshot.outcome
+    local name = ownerName or g_i18n:getText("rm_fm_neg_dlg_seller")
+    if outcome == RmNegotiationEngine.OUTCOME_DEAL then
+        local key = (snapshot.mode == RmNegotiationEngine.MODE_SELL)
+            and "rm_fm_neg_dealSell" or "rm_fm_neg_dealBuy"
+        return string.format(g_i18n:getText(key), formatPrice(snapshot.finalPrice))
+    elseif outcome == RmNegotiationEngine.OUTCOME_REJECTED then
+        return string.format(g_i18n:getText("rm_fm_neg_rejected"), name)
+    elseif outcome == RmNegotiationEngine.OUTCOME_DISMISSED then
+        return string.format(g_i18n:getText("rm_fm_neg_dismissed"), name)
+    elseif outcome == RmNegotiationEngine.OUTCOME_NPC_WALKED then
+        return g_i18n:getText("rm_fm_neg_npcWalked")
+    elseif outcome == RmNegotiationManager.OUTCOME_WALKAWAY then
+        return g_i18n:getText("rm_fm_neg_walkedAway")
+    else
+        return g_i18n:getText("rm_fm_neg_ended")
+    end
+end
+
+--- Map an error reason to a display message.
+--- Module-level for testability.
+---@param errorReason string
+---@return string
+function RmNegotiationUI.getErrorMessage(errorReason)
+    if errorReason == "cooldown" then
+        local info = RmNegotiationManager.getCooldownInfo(
+            RmNegotiationUI.currentFarmlandId, RmNegotiationUI.currentFarmId)
+        if info then
+            return string.format(g_i18n:getText("rm_fm_neg_cooldownDisplay"),
+                info.remaining)
+        end
+        return g_i18n:getText("rm_fm_neg_cooldown")
+    elseif errorReason == "locked" then
+        return g_i18n:getText("rm_fm_neg_locked")
+    elseif errorReason == "insufficient_funds" then
+        return g_i18n:getText("rm_fm_neg_insufficientFunds")
+    elseif errorReason == "invalid_farmland" then
+        return g_i18n:getText("rm_fm_neg_invalidFarmland")
+    end
+    return string.format(g_i18n:getText("rm_fm_neg_error"), tostring(errorReason))
+end
+
 -- =============================================================================
 -- CORE STATE MACHINE DISPATCHER
 -- =============================================================================
 
---- Process a snapshot after a manager action and show appropriate dialog.
+--- Process a snapshot after a manager action and show/update the negotiation dialog.
 ---@param snapshot table|nil Session snapshot
 ---@param errorReason string|nil Error reason if failed
 handleResult = function(snapshot, errorReason)
-    Log:trace(">>> handleResult()")
+    Log:trace(">>> handleResult(snapshot=%s, error=%s)",
+        snapshot and "yes" or "nil", tostring(errorReason))
 
-    -- Error case
-    if snapshot == nil then
-        local msg
-        if errorReason == "cooldown" then
-            msg = g_i18n:getText("rm_fm_neg_cooldown")
-        elseif errorReason == "locked" then
-            msg = g_i18n:getText("rm_fm_neg_locked")
-        elseif errorReason == "invalid_farmland" then
-            msg = g_i18n:getText("rm_fm_neg_invalidFarmland")
-        else
-            msg = string.format(g_i18n:getText("rm_fm_neg_error"), tostring(errorReason))
-        end
-        showInfo(msg)
+    -- Error path
+    if errorReason ~= nil then
+        closeNegotiationDialog()
+        local msg = RmNegotiationUI.getErrorMessage(errorReason)
+        InfoDialog.show(msg)
         RmNegotiationUI.clearState()
-        Log:trace("<<< handleResult() [error]")
         return
     end
 
-    local state = snapshot.state
-    local mode = snapshot.mode
-    local outcome = snapshot.outcome
+    if snapshot == nil then
+        Log:warning("handleResult: nil snapshot without error")
+        return
+    end
 
-    -- COMPLETED state
-    if state == "completed" then
-        if outcome == RmNegotiationEngine.OUTCOME_DEAL then
-            -- Deal! Execute purchase/sale
-            local priceStr = formatPrice(snapshot.finalPrice)
-            local msg
-            if mode == RmNegotiationEngine.MODE_SELL then
-                msg = string.format(g_i18n:getText("rm_fm_neg_dealSell"), priceStr)
-            else
-                msg = string.format(g_i18n:getText("rm_fm_neg_dealBuy"), priceStr)
-            end
-            showInfo(msg, function()
-                executeDeal(snapshot)
-            end)
-        elseif outcome == RmNegotiationEngine.OUTCOME_REJECTED then
-            showInfo(g_i18n:getText("rm_fm_neg_rejected"))
-            RmNegotiationUI.clearState()
-        elseif outcome == RmNegotiationEngine.OUTCOME_DISMISSED then
-            showInfo(g_i18n:getText("rm_fm_neg_dismissed"))
-            RmNegotiationUI.clearState()
-        elseif outcome == RmNegotiationEngine.OUTCOME_NPC_WALKED then
-            showInfo(g_i18n:getText("rm_fm_neg_npcWalked"))
-            RmNegotiationUI.clearState()
-        elseif outcome == RmNegotiationManager.OUTCOME_WALKAWAY then
-            showInfo(g_i18n:getText("rm_fm_neg_walkedAway"))
-            RmNegotiationUI.clearState()
+    local dlg = RmNegotiationDialog.getInstance()
+    local dialogOpen = (dlg ~= nil and dlg.isOpen)
+
+    -- Completed deal: execute immediately, then show result in dialog
+    if snapshot.state == "completed" and snapshot.outcome == RmNegotiationEngine.OUTCOME_DEAL then
+        if dialogOpen then
+            updateDialog(snapshot)
         else
-            showInfo(g_i18n:getText("rm_fm_neg_ended"))
-            RmNegotiationUI.clearState()
+            openDialog(snapshot)
         end
-        Log:trace("<<< handleResult() [completed: %s]", outcome)
+        executeDeal(snapshot)
         return
     end
 
-    -- PROPOSAL state (convergence or last-ditch)
-    if state == "proposal" then
-        local proposal = snapshot.pendingProposal
-        local priceStr = formatPrice(proposal.price)
-        local msg, yesText, noText
-
-        if proposal.type == "convergence" then
-            msg = string.format(g_i18n:getText("rm_fm_neg_convergence"), priceStr)
-            yesText = g_i18n:getText("rm_fm_neg_accept")
-            noText = g_i18n:getText("rm_fm_neg_decline")
-        else -- "last_ditch"
-            msg = string.format(g_i18n:getText("rm_fm_neg_lastDitch"), priceStr)
-            yesText = g_i18n:getText("rm_fm_neg_accept")
-            noText = g_i18n:getText("rm_fm_neg_walkAway")
-        end
-
-        showYesNo(msg, function(accepted)
-            callManagerAPI(
-                RmNegotiationManager.respondToProposal,
-                { RmNegotiationUI.currentFarmId, accepted },
-                handleResult
-            )
-        end, yesText, noText)
-        Log:trace("<<< handleResult() [proposal: %s]", proposal.type)
-        return
-    end
-
-    -- ACTIVE state - show next round input
-    if state == "active" then
-        if mode == RmNegotiationEngine.MODE_SELL then
-            showSellRound(snapshot)
+    -- Other completed (rejected, walked away, etc.): show result in dialog
+    if snapshot.state == "completed" then
+        if dialogOpen then
+            updateDialog(snapshot)
         else
-            showBuyRound(snapshot)
+            openDialog(snapshot)
         end
-        Log:trace("<<< handleResult() [active]")
+        RmNegotiationUI.clearState()
         return
     end
 
-    Log:warning("handleResult: unexpected state '%s'", tostring(state))
-    RmNegotiationUI.clearState()
-end
-
--- =============================================================================
--- BUY ROUND DIALOG
--- =============================================================================
-
---- Show TextInput for entering a buy offer amount.
----@param snapshot table Session snapshot
----@param prompt string Dialog prompt text
-showBuyAmountInput = function(snapshot, prompt)
-    showAmountInput(prompt, "", function(amount)
-        if amount == nil then
-            showYesNo(g_i18n:getText("rm_fm_neg_cancelConfirm"), function(yes)
-                if yes then
-                    callManagerAPI(
-                        RmNegotiationManager.walkaway,
-                        { RmNegotiationUI.currentFarmId },
-                        handleResult
-                    )
-                else
-                    showBuyRound(snapshot)
-                end
-            end, g_i18n:getText("rm_fm_neg_walkAway"), g_i18n:getText("rm_fm_neg_continue"))
-            return
-        end
-        callManagerAPI(
-            RmNegotiationManager.submitOffer,
-            { RmNegotiationUI.currentFarmId, amount },
-            handleResult
-        )
-    end, g_i18n:getText("rm_fm_neg_submit"))
-end
-
---- Show Accept/Counter-offer YesNo for a buy round with a price to respond to.
----@param snapshot table Session snapshot
----@param msg string Dialog message (e.g. "The seller counters at €107,349.")
----@param acceptPrice number Price to accept if player clicks Accept
-showBuyAcceptOrCounter = function(snapshot, msg, acceptPrice)
-    showYesNo(msg, function(accepted)
-        if accepted then
-            callManagerAPI(
-                RmNegotiationManager.submitOffer,
-                { RmNegotiationUI.currentFarmId, acceptPrice },
-                handleResult
-            )
-        else
-            showBuyAmountInput(snapshot, g_i18n:getText("rm_fm_neg_enterOffer"))
-        end
-    end, g_i18n:getText("rm_fm_neg_accept"), g_i18n:getText("rm_fm_neg_counterOffer"))
-end
-
---- Show buy round: display counter info and prompt for offer.
----@param snapshot table Session snapshot
-showBuyRound = function(snapshot)
-    Log:trace(">>> showBuyRound(round=%d)", snapshot.round)
-
-    -- Round exhausted (round 4) - must accept counter or walk away
-    if snapshot.round > RmNegotiationEngine.getMaxRounds() then
-        local counterStr = formatPrice(snapshot.lastCounter)
-        local msg = string.format(g_i18n:getText("rm_fm_neg_roundsExhausted"), counterStr)
-        showYesNo(msg, function(accepted)
-            if accepted then
-                -- Accept at lastCounter price
-                callManagerAPI(
-                    RmNegotiationManager.submitOffer,
-                    { RmNegotiationUI.currentFarmId, snapshot.lastCounter },
-                    handleResult
-                )
-            else
-                callManagerAPI(
-                    RmNegotiationManager.walkaway,
-                    { RmNegotiationUI.currentFarmId },
-                    handleResult
-                )
-            end
-        end, g_i18n:getText("rm_fm_neg_accept"), g_i18n:getText("rm_fm_neg_walkAway"))
-        return
-    end
-
-    -- Determine if player has a price to accept (counter or unlisted demand)
-    local acceptablePrice = snapshot.lastCounter
-    local isListedRound1 = snapshot.round == 1
-        and RmNegotiationUI.currentMode == RmNegotiationEngine.MODE_LISTED_BUY
-
-    if isListedRound1 then
-        -- Listed round 1: player initiates - TextInput only
-        local anchorStr = formatPrice(snapshot.anchorPrice)
-        local prompt = string.format(g_i18n:getText("rm_fm_neg_listedOpening"), anchorStr)
-        showBuyAmountInput(snapshot, prompt)
-    elseif snapshot.round == 1 then
-        -- Unlisted round 1: owner states demand - Accept or Counter
-        local anchorStr = formatPrice(snapshot.anchorPrice)
-        local msg = string.format(g_i18n:getText("rm_fm_neg_unlistedOpening"), anchorStr)
-        acceptablePrice = snapshot.anchorPrice
-        showBuyAcceptOrCounter(snapshot, msg, acceptablePrice)
+    -- Active or proposal: open or update dialog
+    if dialogOpen then
+        updateDialog(snapshot)
     else
-        -- Rounds 2+: seller counters - Accept or Counter
-        local counterStr = formatPrice(snapshot.lastCounter)
-        local msg = string.format(g_i18n:getText("rm_fm_neg_sellerCounters"), counterStr)
-        showBuyAcceptOrCounter(snapshot, msg, acceptablePrice)
+        openDialog(snapshot)
     end
-
-    Log:trace("<<< showBuyRound()")
-end
-
--- =============================================================================
--- SELL ROUND DIALOG
--- =============================================================================
-
---- Show TextInput for entering a sell counter-ask amount.
----@param snapshot table Session snapshot
----@param prompt string Dialog prompt text
-showSellAmountInput = function(snapshot, prompt)
-    showAmountInput(prompt, "", function(amount)
-        if amount == nil then
-            showYesNo(g_i18n:getText("rm_fm_neg_cancelConfirm"), function(yes)
-                if yes then
-                    callManagerAPI(
-                        RmNegotiationManager.walkaway,
-                        { RmNegotiationUI.currentFarmId },
-                        handleResult
-                    )
-                else
-                    showSellRound(snapshot)
-                end
-            end, g_i18n:getText("rm_fm_neg_walkAway"), g_i18n:getText("rm_fm_neg_continue"))
-            return
-        end
-        callManagerAPI(
-            RmNegotiationManager.submitAsk,
-            { RmNegotiationUI.currentFarmId, amount },
-            handleResult
-        )
-    end, g_i18n:getText("rm_fm_neg_submit"))
-end
-
---- Show Accept/Counter-offer YesNo for a sell round with an NPC offer to respond to.
----@param snapshot table Session snapshot
----@param msg string Dialog message (e.g. "A buyer offers €85,000 for your field.")
----@param acceptPrice number Price to accept if player clicks Accept
-showSellAcceptOrCounter = function(snapshot, msg, acceptPrice)
-    showYesNo(msg, function(accepted)
-        if accepted then
-            callManagerAPI(
-                RmNegotiationManager.submitAsk,
-                { RmNegotiationUI.currentFarmId, acceptPrice },
-                handleResult
-            )
-        else
-            showSellAmountInput(snapshot, g_i18n:getText("rm_fm_neg_enterCounterAsk"))
-        end
-    end, g_i18n:getText("rm_fm_neg_accept"), g_i18n:getText("rm_fm_neg_counterOffer"))
-end
-
---- Show sell round: display NPC offer and prompt for accept or counter-ask.
----@param snapshot table Session snapshot
-showSellRound = function(snapshot)
-    Log:trace(">>> showSellRound(round=%d)", snapshot.round)
-
-    -- Round exhausted - must accept NPC offer or walk away
-    if snapshot.round > RmNegotiationEngine.getMaxRounds() then
-        local npcOfferStr = formatPrice(snapshot.lastCounter)
-        local msg = string.format(g_i18n:getText("rm_fm_neg_sellRoundsExhausted"), npcOfferStr)
-        showYesNo(msg, function(accepted)
-            if accepted then
-                callManagerAPI(
-                    RmNegotiationManager.submitAsk,
-                    { RmNegotiationUI.currentFarmId, snapshot.lastCounter },
-                    handleResult
-                )
-            else
-                callManagerAPI(
-                    RmNegotiationManager.walkaway,
-                    { RmNegotiationUI.currentFarmId },
-                    handleResult
-                )
-            end
-        end, g_i18n:getText("rm_fm_neg_accept"), g_i18n:getText("rm_fm_neg_walkAway"))
-        return
-    end
-
-    -- NPC always presents a price - Accept or Counter-offer
-    local npcOfferStr = formatPrice(snapshot.lastCounter)
-    local msg
-    if snapshot.round == 1 then
-        msg = string.format(g_i18n:getText("rm_fm_neg_npcOpening"), npcOfferStr)
-    else
-        msg = string.format(g_i18n:getText("rm_fm_neg_npcRaises"), npcOfferStr)
-    end
-
-    showSellAcceptOrCounter(snapshot, msg, snapshot.lastCounter)
-
-    Log:trace("<<< showSellRound()")
 end
 
 -- =============================================================================
@@ -454,6 +451,7 @@ executeDeal = function(snapshot)
     -- Guard: g_client required to send events (nil on dedicated server without player)
     if g_client == nil then
         Log:error("executeDeal: g_client is nil, cannot send FarmlandStateEvent")
+        closeNegotiationDialog()
         RmNegotiationUI.clearState()
         return
     end
@@ -473,12 +471,14 @@ executeDeal = function(snapshot)
         -- BUY: validate balance first (advisory - server also validates)
         local farm = g_farmManager:getFarmById(farmId)
         if farm == nil then
-            showInfo(g_i18n:getText("rm_fm_neg_error"))
+            closeNegotiationDialog()
+            InfoDialog.show(g_i18n:getText("rm_fm_neg_error"))
             RmNegotiationUI.clearState()
             return
         end
         if farm:getBalance() < price then
-            showInfo(g_i18n:getText("rm_fm_neg_insufficientFunds"))
+            closeNegotiationDialog()
+            InfoDialog.show(g_i18n:getText("rm_fm_neg_insufficientFunds"))
             RmNegotiationUI.clearState()
             return
         end
@@ -537,29 +537,36 @@ function RmNegotiationUI.startSellNegotiation(farmlandId, farmId)
     -- Get market value for reference display
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then
-        showInfo(g_i18n:getText("rm_fm_neg_invalidFarmland"))
+        InfoDialog.show(g_i18n:getText("rm_fm_neg_invalidFarmland"))
         RmNegotiationUI.clearState()
         return
     end
     local marketValue = farmland.price
     local marketStr = formatPrice(marketValue)
 
-    -- Prompt player to enter their listing price
+    -- Prompt player to enter their listing price (TextInputDialog - no session yet)
     local prompt = string.format(g_i18n:getText("rm_fm_neg_enterListingPrice"), marketStr)
     local defaultText = tostring(math.floor(marketValue))
 
-    showAmountInput(prompt, defaultText, function(listingPrice)
-        if listingPrice == nil then
+    TextInputDialog.show(function(text, confirmed)
+        if not confirmed or text == nil or text == "" then
             -- Player cancelled - abort sell
+            RmNegotiationUI.clearState()
+            return
+        end
+        local amount = tonumber(text)
+        if amount == nil or amount <= 0 then
+            InfoDialog.show(g_i18n:getText("rm_fm_neg_invalidAmount"))
             RmNegotiationUI.clearState()
             return
         end
         callManagerAPI(
             RmNegotiationManager.startSell,
-            { farmlandId, farmId, listingPrice },
+            { farmlandId, farmId, math.floor(amount) },
             handleResult
         )
-    end, g_i18n:getText("rm_fm_neg_submit"))
+    end, nil, defaultText, prompt, nil, 12, g_i18n:getText("rm_fm_neg_submit"))
+
     Log:trace("<<< startSellNegotiation()")
 end
 
@@ -607,7 +614,7 @@ end
 function RmNegotiationUI.cancelActiveNegotiation()
     if RmNegotiationUI.currentFarmId ~= nil then
         Log:debug("NEGOTIATION_UI: Cancelling active negotiation")
-        RmNegotiationManager.cancelSession(RmNegotiationUI.currentFarmId)
+        sendCancelToServer(RmNegotiationUI.currentFarmId)
         RmNegotiationUI.clearState()
     end
 end
