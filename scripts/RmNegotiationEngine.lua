@@ -91,6 +91,7 @@ RmNegotiationEngine.SELL = {
     lastDitchProximity = 0.05,
     lastDitchChance = 0.38,
     decay = 0.55,
+    maxListingMultiplier = 2.0,
 }
 
 -- =============================================================================
@@ -276,11 +277,14 @@ function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
     end
 
     local params = RmNegotiationEngine.SELL
-    local npcOpening = randomInRange(params.npcOpening[1], params.npcOpening[2]) * listingPrice
-    local npcResListing = randomInRange(params.npcResListing[1], params.npcResListing[2]) * listingPrice
     local npcMarketCap = randomInRange(params.npcMarketCap[1], params.npcMarketCap[2]) * marketValue
+    local npcOpening = math.min(
+        randomInRange(params.npcOpening[1], params.npcOpening[2]) * listingPrice,
+        npcMarketCap
+    )
+    local npcResListing = randomInRange(params.npcResListing[1], params.npcResListing[2]) * listingPrice
     local npcReservation = math.min(npcResListing, npcMarketCap)
-    npcReservation = math.max(npcReservation, npcOpening) -- can't be below opening
+    npcReservation = math.max(npcReservation, npcOpening) -- safe: npcOpening <= npcMarketCap
     local npcStubbornness = clamp(params.npcStubbornness.base + randomInRange(-params.npcStubbornness.range, params.npcStubbornness.range), 0.1, 0.95)
 
     local profile = {

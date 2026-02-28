@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0.2 (Beta):
+- Fixed sell negotiation exploit where inflated listing prices bypassed NPC market value cap
+- Added listing price validation: cannot exceed twice the market value
+- Clamped NPC opening bid to market-value ceiling in negotiation engine
+
 ## 0.4.0.1 (Beta):
 - Fixed keyboard navigation not reaching Farmland Market settings in Game Settings
 - Fixed negotiation toggle (BinaryOption) visual glitch where slider was misaligned

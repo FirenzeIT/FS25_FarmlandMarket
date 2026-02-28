@@ -411,6 +411,12 @@ local function doStartSell(farmlandId, farmId, listingPrice)
     -- Get market value (server-authoritative)
     local marketValue = getMarketValue(farmlandId)
     if marketValue == nil or marketValue <= 0 then return nil, "invalid_market_value" end
+    -- Validate listing price against market value cap
+    local maxListing = marketValue * RmNegotiationEngine.SELL.maxListingMultiplier
+    if listingPrice > maxListing then
+        Log:debug("NEGOTIATION: Listing price %.0f exceeds max %.0f", listingPrice, maxListing)
+        return nil, "listing_too_high"
+    end
     -- Generate NPC buyer using player's listing price
     local buyerProfile = RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
     if buyerProfile == nil then return nil, "profile_generation_failed" end

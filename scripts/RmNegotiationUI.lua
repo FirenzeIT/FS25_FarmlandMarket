@@ -376,6 +376,8 @@ function RmNegotiationUI.getErrorMessage(errorReason)
         return g_i18n:getText("rm_fm_neg_insufficientFunds")
     elseif errorReason == "invalid_farmland" then
         return g_i18n:getText("rm_fm_neg_invalidFarmland")
+    elseif errorReason == "listing_too_high" then
+        return g_i18n:getText("rm_fm_neg_listingTooHigh2")
     end
     return string.format(g_i18n:getText("rm_fm_neg_error"), tostring(errorReason))
 end
@@ -557,6 +559,12 @@ function RmNegotiationUI.startSellNegotiation(farmlandId, farmId)
         local amount = tonumber(text)
         if amount == nil or amount <= 0 then
             InfoDialog.show(g_i18n:getText("rm_fm_neg_invalidAmount"))
+            RmNegotiationUI.clearState()
+            return
+        end
+        local maxListing = marketValue * RmNegotiationEngine.SELL.maxListingMultiplier
+        if amount > maxListing then
+            InfoDialog.show(string.format(g_i18n:getText("rm_fm_neg_listingTooHigh"), formatPrice(maxListing)))
             RmNegotiationUI.clearState()
             return
         end
