@@ -906,7 +906,7 @@ function RmNegotiationManager.initialize()
         "consoleSession", RmNegotiationManager)
     addConsoleCommand("fmCooldowns", "Show active cooldowns",
         "consoleCooldowns", RmNegotiationManager)
-    Log:info("NegotiationManager initialized")
+    Log:debug("NegotiationManager initialized")
     Log:trace("<<< RmNegotiationManager.initialize()")
 end
 
@@ -1001,7 +1001,7 @@ function RmNegotiationManager.saveToXMLFile(xmlFile)
     end
 
     Log:debug("NEG: Saved %d profiles, %d cooldowns across %d farmlands", profileCount, cooldownCount, i)
-    Log:info("Negotiation state saved")
+    Log:debug("Negotiation state saved")
     Log:trace("<<< RmNegotiationManager.saveToXMLFile()")
 end
 
@@ -1093,7 +1093,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
     end
 
     Log:debug("NEG: Loaded %d profiles, %d cooldowns from %d farmland entries", profileCount, cooldownCount, i)
-    Log:info("Negotiation state loaded")
+    Log:debug("Negotiation state loaded")
     Log:trace("<<< RmNegotiationManager.loadFromXMLFile()")
 end
 

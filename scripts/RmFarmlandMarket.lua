@@ -907,7 +907,7 @@ local function loadFromSavegame()
         return
     end
 
-    Log:info("Loading savegame from rm_FarmlandMarket.xml")
+    Log:debug("Loading savegame from rm_FarmlandMarket.xml")
 
     -- Delegate to modules
     RmFmSettings.loadFromXMLFile(xmlFile)
@@ -918,7 +918,7 @@ local function loadFromSavegame()
     RmNegotiationManager.ensureListedProfiles()
 
     xmlFile:delete()
-    Log:info("Savegame loaded from rm_FarmlandMarket.xml")
+    Log:debug("Savegame loaded from rm_FarmlandMarket.xml")
     Log:trace("<<< loadFromSavegame()")
 end
 
@@ -947,7 +947,7 @@ local function saveToSavegame()
         return
     end
 
-    Log:info("Saving to rm_FarmlandMarket.xml")
+    Log:debug("Saving to rm_FarmlandMarket.xml")
 
     -- Delegate to modules
     RmFmSettings.saveToXMLFile(xmlFile)
@@ -957,7 +957,7 @@ local function saveToSavegame()
     xmlFile:save()
     xmlFile:delete()
 
-    Log:info("Savegame saved to rm_FarmlandMarket.xml")
+    Log:debug("Savegame saved to rm_FarmlandMarket.xml")
     Log:trace("<<< saveToSavegame()")
 end
 
@@ -1008,7 +1008,7 @@ local function onLoadMapFinished()
         end
     end
 
-    Log:info("FarmlandMarket hooks registered")
+    Log:debug("FarmlandMarket hooks registered")
 end
 
 --- Apply crop-value pricing to all farmlands.

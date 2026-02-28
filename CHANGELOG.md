@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0.0 (Beta)
+- Added dedicated negotiation dialog with offer history, field details, and action buttons
+- Added seller names in negotiation messages for clearer context
+- Improved cooldown messages to show remaining time in months
+- Promoted from Alpha to Beta
+
 ## 0.3.0.0 (Alpha)
 - Added negotiation system - buy and sell farmland through multi-round offers and counter-offers
 - Added "Make offer" and "Negotiate sale" buttons replacing instant buy/sell

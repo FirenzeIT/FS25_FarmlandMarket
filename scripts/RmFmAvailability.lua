@@ -439,7 +439,7 @@ function RmFmAvailability.saveToXMLFile(xmlFile)
     end
 
     Log:debug("AVAIL: Saved %d availability entries", i)
-    Log:info("Availability state saved")
+    Log:debug("Availability state saved")
     Log:trace("<<< saveToXMLFile()")
 end
 

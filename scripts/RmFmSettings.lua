@@ -294,7 +294,7 @@ function RmFmSettings.initGui()
     scrollPanel:invalidateLayout()
 
     RmFmSettings.uiInitialized = true
-    Log:info("Settings GUI initialized")
+    Log:debug("Settings GUI initialized")
     Log:trace("<<< initGui()")
 end
 
@@ -357,7 +357,7 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
         RmFmSettings.getPriceMultiplier(),
         RmFmSettings.priceMultiplierState,
         RmFmSettings.isNegotiationEnabled() and "on" or "off")
-    Log:info("Settings loaded from savegame")
+    Log:debug("Settings loaded from savegame")
 
     Log:trace("<<< loadFromXMLFile()")
 end
@@ -381,7 +381,7 @@ function RmFmSettings.saveToXMLFile(xmlFile)
     Log:debug("SETTINGS: Saved preset=%d multiplier=%d negotiation=%d",
         RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
         RmFmSettings.negotiationEnabledState)
-    Log:info("Settings saved")
+    Log:debug("Settings saved")
 
     Log:trace("<<< saveToXMLFile()")
 end

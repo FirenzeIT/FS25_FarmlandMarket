@@ -697,7 +697,7 @@ function RmNegotiationDialog.register()
     local dialog = RmNegotiationDialog.new(g_i18n)
     g_gui:loadGui(modDir .. "gui/RmNegotiationDialog.xml", "RmNegotiationDialog", dialog)
     if dialog ~= nil then
-        Log:info("RmNegotiationDialog registered")
+        Log:debug("RmNegotiationDialog registered")
     else
         Log:error("Failed to register RmNegotiationDialog")
     end

@@ -1,7 +1,7 @@
 # Farmland Market
 
 > [!WARNING]
-> **ALPHA** This mod is under active development and will contain bugs and cause unexpected behavior.
+> **BETA** This mod is under active development. Features are functional but may contain bugs.
 
 Makes farmland acquisition more realistic and strategic. Field prices reflect their actual crop value, and not all fields are always available for purchase.
 
@@ -45,7 +45,7 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 - **Game Version**: Farming Simulator 25
 - **Multiplayer**: Supported
 - **Platform**: PC (Windows/macOS)
-- **Maps**: Works with any map
+- **Maps**: Any map
 
 ## Changelog
 

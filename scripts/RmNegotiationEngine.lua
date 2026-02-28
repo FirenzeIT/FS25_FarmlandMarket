@@ -776,4 +776,4 @@ function RmNegotiationEngine.negotiateSell(strategy, marketValue)
     }
 end
 
-Log:info("NegotiationEngine module loaded")
+Log:debug("NegotiationEngine module loaded")
