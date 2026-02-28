@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="106">
     <author>Ritter</author>
-    <version>0.4.0.0</version>
+    <version>0.4.0.1</version>
     <title>
         <en>Farmland Market</en>
     </title>
@@ -26,6 +26,10 @@ Notes:
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
+0.4.0.1 (Beta):
+- Fixed keyboard navigation not reaching Farmland Market settings in Game Settings
+- Fixed negotiation toggle (BinaryOption) visual glitch where slider was misaligned
+
 0.4.0.0 (Beta):
 - Added dedicated negotiation dialog with offer history, field details, and action buttons
 - Added seller names in negotiation messages for clearer context
@@ -56,7 +60,7 @@ Changelog:
 - Initial release
 - Farmland prices now include estimated crop value
 - Configurable base price per hectare
-        ]]></en>
+        ]]>        </en>
     </description>
 
     <iconFilename>icon_FarmlandMarket.dds</iconFilename>

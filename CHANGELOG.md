@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0.1 (Beta):
+- Fixed keyboard navigation not reaching Farmland Market settings in Game Settings
+- Fixed negotiation toggle (BinaryOption) visual glitch where slider was misaligned
+
 ## 0.4.0.0 (Beta)
 - Added dedicated negotiation dialog with offer history, field details, and action buttons
 - Added seller names in negotiation messages for clearer context

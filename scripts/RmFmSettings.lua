@@ -116,7 +116,6 @@ local function sendSettingsChangeRequest(availabilityPresetState, priceMultiplie
         availabilityPresetState, priceMultiplierState, negotiationEnabledState)
     if g_server ~= nil then
         -- Host/server: apply directly and broadcast to remote clients
-        Log:debug("SETTINGS: Applying directly on server (host path)")
         RmFmSettings.setAvailabilityPreset(availabilityPresetState)
         RmFmSettings.setPriceMultiplier(priceMultiplierState)
         RmFmSettings.setNegotiationEnabled(negotiationEnabledState)
@@ -129,7 +128,6 @@ local function sendSettingsChangeRequest(availabilityPresetState, priceMultiplie
             RmFmSettings.isNegotiationEnabled() and "on" or "off")
     elseif g_client ~= nil then
         -- Remote client: send to server for validation
-        Log:debug("SETTINGS: Sending change request to server (client path)")
         g_client:getServerConnection():sendEvent(
             RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
         )
@@ -168,7 +166,26 @@ local function onNegotiationEnabledChanged(_, state)
 end
 
 -- ============================================================================
--- UI INITIALIZATION (follows AdjustStorageCapacity pattern)
+-- UI HELPERS
+-- ============================================================================
+
+-- Cloned containers for FocusManager registration
+local fmClonedControls = {}
+
+--- Recursively assign unique focusIds to a cloned element and all its children.
+--- Cloned elements inherit duplicate focusIds from their templates, which breaks
+--- FocusManager navigation. Pattern from ForestryHelper UIHelper / PlayerMovement.
+---@param element table GUI element
+local function updateFocusIds(element)
+    if not element then return end
+    element.focusId = FocusManager:serveAutoFocusId()
+    for _, child in pairs(element.elements) do
+        updateFocusIds(child)
+    end
+end
+
+-- ============================================================================
+-- UI INITIALIZATION
 -- ============================================================================
 
 --- Initialize settings UI by cloning elements from game settings page.
@@ -178,7 +195,6 @@ function RmFmSettings.initGui()
 
     -- Guard: skip on dedicated server
     if g_dedicatedServer ~= nil then
-        Log:debug("SETTINGS: Skipping GUI init on dedicated server")
         return
     end
 
@@ -229,17 +245,21 @@ function RmFmSettings.initGui()
 
     -- Clone section header
     local header = sectionHeaderTemplate:clone(scrollPanel)
+    updateFocusIds(header)
     header:setText(g_i18n:getText("rm_fm_settings_section"))
 
     -- Clone availability preset (MultiTextOption)
     local availabilityContainer = multiTextOptionTemplate:clone(scrollPanel)
+    updateFocusIds(availabilityContainer)
     availabilityContainer.id = nil  -- clear cloned ID to avoid conflicts
 
     local availabilityControl = availabilityContainer.elements[1]
     local availabilityLabel = availabilityContainer.elements[2]
 
     availabilityLabel:setText(g_i18n:getText("rm_fm_settings_availability"))
+    availabilityLabel.id = nil
     availabilityControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_availability_tooltip"))
+    availabilityControl.id = "fmAvailabilityPreset"
     availabilityControl:setTexts({
         g_i18n:getText("ui_off"),
         g_i18n:getText("rm_fm_preset_easy"),
@@ -251,24 +271,32 @@ function RmFmSettings.initGui()
     availabilityControl:setState(RmFmSettings.availabilityPresetState)
     availabilityControl.onClickCallback = onAvailabilityPresetChanged
 
+    availabilityContainer:setVisible(true)
+    availabilityContainer:setDisabled(false)
+
     -- Store reference for state updates in updateGameSettings
     settingsPage.fmAvailabilityControl = availabilityControl
 
     -- Clone negotiation enabled toggle (BinaryOption: 1=Off, 2=On)
     local negTemplate = binaryOptionTemplate or multiTextOptionTemplate
     local negContainer = negTemplate:clone(scrollPanel)
+    updateFocusIds(negContainer)
     negContainer.id = nil
 
     local negControl = negContainer.elements[1]
     local negLabel = negContainer.elements[2]
 
     negLabel:setText(g_i18n:getText("rm_fm_settings_negotiation"))
+    negLabel.id = nil
     negControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_negotiation_tooltip"))
+    negControl.id = "fmNegotiationEnabled"
     if binaryOptionTemplate == nil then
         -- Fallback: MultiTextOption if no BinaryOption template found
         negControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
     end
-    negControl:setState(RmFmSettings.negotiationEnabledState)
+    -- NOTE: Do NOT call setState here for BinaryOption. The slider positions itself
+    -- based on element dimensions which are zero at source time. updateGameSettings
+    -- will set the correct state when the frame opens with real dimensions.
     negControl.onClickCallback = onNegotiationEnabledChanged
 
     negContainer:setVisible(true)
@@ -278,23 +306,32 @@ function RmFmSettings.initGui()
 
     -- Clone price multiplier (MultiTextOption)
     local priceContainer = multiTextOptionTemplate:clone(scrollPanel)
+    updateFocusIds(priceContainer)
     priceContainer.id = nil
 
     local priceControl = priceContainer.elements[1]
     local priceLabel = priceContainer.elements[2]
 
     priceLabel:setText(g_i18n:getText("rm_fm_settings_priceMultiplier"))
+    priceLabel.id = nil
     priceControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_priceMultiplier_tooltip"))
+    priceControl.id = "fmPriceMultiplier"
     priceControl:setTexts(RmFmSettings.PRICE_MULTIPLIER_TEXTS)
     priceControl:setState(RmFmSettings.priceMultiplierState)
     priceControl.onClickCallback = onPriceMultiplierChanged
 
+    priceContainer:setVisible(true)
+    priceContainer:setDisabled(false)
+
     settingsPage.fmPriceMultiplierControl = priceControl
+
+    -- Track cloned containers for FocusManager registration
+    fmClonedControls = { header, availabilityContainer, negContainer, priceContainer }
 
     scrollPanel:invalidateLayout()
 
     RmFmSettings.uiInitialized = true
-    Log:debug("Settings GUI initialized")
+    Log:info("Settings GUI initialized (4 elements cloned, focusIds updated)")
     Log:trace("<<< initGui()")
 end
 
@@ -309,8 +346,6 @@ local function updateGameSettings(settingsPage)
 
     if settingsPage.fmAvailabilityControl ~= nil then
         settingsPage.fmAvailabilityControl:setState(RmFmSettings.availabilityPresetState)
-        Log:debug("SETTINGS: Synced availability UI to state %d (%s)",
-            RmFmSettings.availabilityPresetState, RmFmSettings.getPresetName())
     end
 
     if settingsPage.fmPriceMultiplierControl ~= nil then
@@ -326,7 +361,6 @@ local function updateGameSettings(settingsPage)
             settingsPage.fmPriceMultiplierControl.elements[1]:setText(tooltip)
         end
 
-        Log:debug("SETTINGS: Synced price multiplier UI to state %d", RmFmSettings.priceMultiplierState)
     end
 
     if settingsPage.fmNegotiationControl ~= nil then
@@ -351,13 +385,9 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
     RmFmSettings.priceMultiplierState = xmlFile:getValue(key .. "#priceMultiplier", 3)
     RmFmSettings.negotiationEnabledState = xmlFile:getValue(key .. "#negotiationEnabled", 1)
 
-    Log:debug("SETTINGS: Loaded preset=%s (state=%d) multiplier=%.2fx (state=%d) negotiation=%s",
-        RmFmSettings.getPresetName(),
-        RmFmSettings.availabilityPresetState,
-        RmFmSettings.getPriceMultiplier(),
-        RmFmSettings.priceMultiplierState,
+    Log:debug("Settings loaded: preset=%s multiplier=%.2fx negotiation=%s",
+        RmFmSettings.getPresetName(), RmFmSettings.getPriceMultiplier(),
         RmFmSettings.isNegotiationEnabled() and "on" or "off")
-    Log:debug("Settings loaded from savegame")
 
     Log:trace("<<< loadFromXMLFile()")
 end
@@ -378,10 +408,7 @@ function RmFmSettings.saveToXMLFile(xmlFile)
     xmlFile:setValue(key .. "#priceMultiplier", RmFmSettings.priceMultiplierState)
     xmlFile:setValue(key .. "#negotiationEnabled", RmFmSettings.negotiationEnabledState)
 
-    Log:debug("SETTINGS: Saved preset=%d multiplier=%d negotiation=%d",
-        RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
-        RmFmSettings.negotiationEnabledState)
-    Log:debug("Settings saved")
+    Log:debug("Settings saved to savegame")
 
     Log:trace("<<< saveToXMLFile()")
 end
@@ -397,7 +424,6 @@ function RmFmSettings.sendInitialClientState(_, connection)
         return
     end
 
-    Log:debug("SYNC: Sending initial settings to joining client")
     connection:sendEvent(
         RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
             RmFmSettings.negotiationEnabledState)
@@ -416,6 +442,34 @@ function RmFmSettings.setupHooks()
         updateGameSettings
     )
 
+    -- Hook: Register cloned elements with FocusManager when GUI is set up.
+    -- Without this, cloned elements are not in the FocusManager's element mapping
+    -- and keyboard navigation skips them. Pattern from ForestryHelper / PlayerMovement.
+    FocusManager.setGui = Utils.appendedFunction(FocusManager.setGui, function(_, gui)
+        if gui == nil or #fmClonedControls == 0 then return end
+
+        local registered = 0
+        for _, control in ipairs(fmClonedControls) do
+            if not control.focusId
+                or not FocusManager.currentFocusData.idToElementMapping[control.focusId] then
+                if FocusManager:loadElementFromCustomValues(control, nil, nil, false, false) then
+                    registered = registered + 1
+                else
+                    Log:warning("FOCUS: Failed to register %s with FocusManager",
+                        control.id or control.typeName or "?")
+                end
+            end
+        end
+
+        if registered > 0 then
+            Log:trace("FOCUS: Registered %d controls with FocusManager", registered)
+            local settingsPage = g_inGameMenu.pageSettings
+            if settingsPage ~= nil and settingsPage.gameSettingsLayout ~= nil then
+                settingsPage.gameSettingsLayout:invalidateLayout()
+            end
+        end
+    end)
+
     -- Hook: Send initial state to joining clients
     FSBaseMission.sendInitialClientState = Utils.appendedFunction(
         FSBaseMission.sendInitialClientState,
@@ -431,5 +485,3 @@ end
 
 RmFmSettings.initGui()
 RmFmSettings.setupHooks()
-
-Log:debug("RmFmSettings module loaded")
