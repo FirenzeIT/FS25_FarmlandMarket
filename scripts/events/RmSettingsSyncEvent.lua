@@ -4,7 +4,7 @@
 
     Settings synced:
     - availabilityPresetState (Int32) - 1=off, 2=easy, 3=normal, 4=hard, 5=harder, 6=realistic
-    - priceMultiplierState (Int32) - index into PRICE_MULTIPLIER_VALUES array
+    - customPricePerHa (Int32) - absolute price per hectare (0 = map default)
 
     Flow:
     - Client changes setting -> sends event to server (no local apply)
@@ -32,15 +32,15 @@ end
 
 --- Create new event with data
 ---@param availabilityPresetState number Availability preset state (1-6)
----@param priceMultiplierState number Price multiplier state index
----@param negotiationEnabledState number Negotiation enabled state (1=On, 2=Off)
+---@param customPricePerHa number Custom price per hectare (0 = map default)
+---@param negotiationEnabledState number Negotiation enabled state (1=Off, 2=On)
 ---@return table event
-function RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
-    Log:trace(">>> RmSettingsSyncEvent.new(availabilityPresetState=%d, priceMultiplierState=%d, neg=%d)",
-        availabilityPresetState, priceMultiplierState, negotiationEnabledState)
+function RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
+    Log:trace(">>> RmSettingsSyncEvent.new(availabilityPresetState=%d, customPricePerHa=%d, neg=%d)",
+        availabilityPresetState, customPricePerHa, negotiationEnabledState)
     local self = Event.new(Mt)
     self.availabilityPresetState = availabilityPresetState
-    self.priceMultiplierState = priceMultiplierState
+    self.customPricePerHa = customPricePerHa
     self.negotiationEnabledState = negotiationEnabledState
     Log:trace("<<< RmSettingsSyncEvent.new()")
     return self
@@ -50,10 +50,10 @@ end
 ---@param streamId number Stream ID
 ---@param connection table Connection object
 function RmSettingsSyncEvent:writeStream(streamId, connection)
-    Log:trace(">>> RmSettingsSyncEvent:writeStream(availabilityPresetState=%d, priceMultiplierState=%d, neg=%d)",
-        self.availabilityPresetState, self.priceMultiplierState, self.negotiationEnabledState)
+    Log:trace(">>> RmSettingsSyncEvent:writeStream(availabilityPresetState=%d, customPricePerHa=%d, neg=%d)",
+        self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
     streamWriteInt32(streamId, self.availabilityPresetState)
-    streamWriteInt32(streamId, self.priceMultiplierState)
+    streamWriteInt32(streamId, self.customPricePerHa)
     streamWriteInt32(streamId, self.negotiationEnabledState)
     Log:trace("<<< RmSettingsSyncEvent:writeStream()")
 end
@@ -64,10 +64,10 @@ end
 function RmSettingsSyncEvent:readStream(streamId, connection)
     Log:trace(">>> RmSettingsSyncEvent:readStream()")
     self.availabilityPresetState = streamReadInt32(streamId)
-    self.priceMultiplierState = streamReadInt32(streamId)
+    self.customPricePerHa = streamReadInt32(streamId)
     self.negotiationEnabledState = streamReadInt32(streamId)
-    Log:trace("    Read: availabilityPresetState=%d, priceMultiplierState=%d, neg=%d",
-        self.availabilityPresetState, self.priceMultiplierState, self.negotiationEnabledState)
+    Log:trace("    Read: availabilityPresetState=%d, customPricePerHa=%d, neg=%d",
+        self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
     self:run(connection)
     Log:trace("<<< RmSettingsSyncEvent:readStream()")
 end
@@ -92,27 +92,27 @@ function RmSettingsSyncEvent:run(connection)
             return
         end
 
-        Log:info("Applying settings: preset=%d multiplier=%d negotiation=%d",
-            self.availabilityPresetState, self.priceMultiplierState, self.negotiationEnabledState)
+        Log:info("Applying settings: preset=%d price/ha=%d negotiation=%d",
+            self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
 
         -- Apply on server (server IS the host in listen server mode)
         RmFmSettings.setAvailabilityPreset(self.availabilityPresetState)
-        RmFmSettings.setPriceMultiplier(self.priceMultiplierState)
+        RmFmSettings.setCustomPricePerHa(self.customPricePerHa)
         RmFmSettings.setNegotiationEnabled(self.negotiationEnabledState)
 
         -- Broadcast to all remote clients (host already applied above)
         Log:debug("SYNC: Broadcasting settings to all clients")
         g_server:broadcastEvent(
-            RmSettingsSyncEvent.new(self.availabilityPresetState, self.priceMultiplierState,
+            RmSettingsSyncEvent.new(self.availabilityPresetState, self.customPricePerHa,
                 self.negotiationEnabledState)
         )
     else
         -- CLIENT: Received from server broadcast - apply
-        Log:info("Received settings from server: preset=%d multiplier=%d negotiation=%d",
-            self.availabilityPresetState, self.priceMultiplierState, self.negotiationEnabledState)
+        Log:info("Received settings from server: preset=%d price/ha=%d negotiation=%d",
+            self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
 
         RmFmSettings.setAvailabilityPreset(self.availabilityPresetState)
-        RmFmSettings.setPriceMultiplier(self.priceMultiplierState)
+        RmFmSettings.setCustomPricePerHa(self.customPricePerHa)
         RmFmSettings.setNegotiationEnabled(self.negotiationEnabledState)
     end
 

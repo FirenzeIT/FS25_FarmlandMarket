@@ -5,9 +5,13 @@
         <text name="rm_fm_settings_section" text="Farmland Market"/>
         <text name="rm_fm_settings_availability" text="Field Availability"/>
         <text name="rm_fm_settings_availability_tooltip" text="Controls how many fields are available for purchase. Higher difficulty means fewer fields and longer waits. Fields rotate based on a seasonal market (more listings Nov-Mar). 'Realistic' is extreme - most fields stay locked for months."/>
-        <text name="rm_fm_settings_priceMultiplier" text="Base Price Multiplier"/>
-        <text name="rm_fm_settings_priceMultiplier_tooltip" text="Multiplier applied to the base farmland price per hectare."/>
-        <text name="rm_fm_settings_priceMultiplier_mapBase" text="Map base price"/>
+        <text name="rm_fm_settings_pricePerHa" text="Base Price per Hectare"/>
+        <text name="rm_fm_settings_pricePerHa_tooltip" text="Set a custom base price per hectare for all farmland. Crop value is added on top."/>
+        <text name="rm_fm_settings_pricePerHa_mapDefault" text="Map Default"/>
+        <text name="rm_fm_settings_pricePerHa_dialogPrompt" text="Enter base price per hectare (map default: %s/ha)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonDefault" text="%s/ha (Default)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonCustom" text="%s/ha"/>
+        <text name="rm_fm_settings_pricePerHa_dialogConfirm" text="Set"/>
 
         <!-- Availability Presets -->
         <text name="rm_fm_preset_easy" text="Easy"/>

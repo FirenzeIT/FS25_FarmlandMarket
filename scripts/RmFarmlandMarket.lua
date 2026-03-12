@@ -158,16 +158,18 @@ Farmland.updatePrice = Utils.overwrittenFunction(Farmland.updatePrice, function(
     Log:trace("<<< updatePrice override (finalPrice=%.0f)", self.price)
 end)
 
--- Override base price per hectare with multiplier
+-- Override base price per hectare with custom price
 FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
     FarmlandManager.getPricePerHa,
     function(self, superFunc)
+        local customPrice = RmFmSettings.getCustomPricePerHa()
+        if customPrice > 0 then
+            Log:trace(">>> getPricePerHa: custom=%d", customPrice)
+            return customPrice
+        end
         local basePrice = superFunc(self)
-        local multiplier = RmFmSettings.getPriceMultiplier()
-        local result = basePrice * multiplier
-        Log:trace(">>> getPricePerHa: base=%.0f multiplier=%.2f result=%.0f",
-            basePrice, multiplier, result)
-        return result
+        Log:trace(">>> getPricePerHa: default=%d", basePrice)
+        return basePrice
     end
 )
 
@@ -850,7 +852,7 @@ function RmFarmlandMarket.registerXmlSchema()
 
     -- Settings
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#availabilityPreset", "Availability preset state")
-    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#priceMultiplier", "Price multiplier state")
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#customPricePerHa", "Custom base price per hectare (0 = map default)")
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiationEnabled", "Negotiation enabled state")
 
     -- Availability entries
@@ -1006,7 +1008,7 @@ end
 
 --- Apply crop-value pricing to all farmlands.
 --- Called from onStartMission when farmlands and fields are fully loaded.
---- Also called when price multiplier setting changes.
+--- Also called when custom price/ha setting changes.
 function RmFarmlandMarket.updateAllFarmlandPrices()
     Log:trace(">>> updateAllFarmlandPrices()")
     local totalFarmlands = 0

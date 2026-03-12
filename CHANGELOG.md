@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0.0-dev (Beta):
+- Changed base price setting from multiplier presets to direct price per hectare input
+- Fixed list price not showing correctly when Precision Farming mod is active
+- Fixed logger registration error when multiple Ritter mods are loaded
+
 ## 0.4.0.2 (Beta):
 - Fixed sell negotiation exploit where inflated listing prices bypassed NPC market value cap
 - Added listing price validation: cannot exceed twice the market value

@@ -10,7 +10,7 @@
 
     Settings:
     - Availability preset (MultiTextOption): off, easy, normal, hard, harder, realistic
-    - Base price multiplier (MultiTextOption): 0.5x to 2.0x presets
+    - Base price per hectare (Button + TextInputDialog): custom absolute price, 0 = map default
 
     Author: Ritter
 ]]
@@ -25,12 +25,12 @@ local Log = RmLogging.getLogger("FarmlandMarket")
 
 -- Settings state (1-indexed for MultiTextOption)
 RmFmSettings.availabilityPresetState = 3   -- Default: 3 = Normal (index into PRESET_ORDER)
-RmFmSettings.priceMultiplierState = 3      -- Default: 3 = 1.0x
+RmFmSettings.customPricePerHa = 0          -- 0 = use map default, otherwise absolute price/ha (1-9999999)
 RmFmSettings.negotiationEnabledState = 2   -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
 
--- Price multiplier presets
-RmFmSettings.PRICE_MULTIPLIER_VALUES = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0}
-RmFmSettings.PRICE_MULTIPLIER_TEXTS = {"0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"}
+-- Price per hectare bounds
+RmFmSettings.MIN_PRICE_PER_HA = 1
+RmFmSettings.MAX_PRICE_PER_HA = 9999999
 
 -- UI initialization flag
 RmFmSettings.uiInitialized = false
@@ -51,10 +51,10 @@ function RmFmSettings.isAvailabilityEnabled()
     return RmFmSettings.availabilityPresetState ~= 1
 end
 
---- Get current price multiplier value
----@return number multiplier
-function RmFmSettings.getPriceMultiplier()
-    return RmFmSettings.PRICE_MULTIPLIER_VALUES[RmFmSettings.priceMultiplierState]
+--- Get custom price per hectare (0 = use map default)
+---@return number price
+function RmFmSettings.getCustomPricePerHa()
+    return RmFmSettings.customPricePerHa
 end
 
 --- Check if negotiation system is enabled.
@@ -77,20 +77,28 @@ function RmFmSettings.setAvailabilityPreset(state)
     Log:trace("<<< setAvailabilityPreset()")
 end
 
---- Set price multiplier state and recalculate all farmland prices
+--- Set custom price per hectare and recalculate all farmland prices.
+--- Canonical normalization: all entry points (UI, load, network) go through here.
 --- (no network - use event for MP changes)
----@param state number State index (1-6)
-function RmFmSettings.setPriceMultiplier(state)
-    Log:trace(">>> setPriceMultiplier(state=%d)", state)
-    RmFmSettings.priceMultiplierState = state
-    local multiplier = RmFmSettings.getPriceMultiplier()
-    Log:debug("SETTINGS: Price multiplier = %.2fx (state=%d)", multiplier, state)
-
-    -- Update all farmland prices
+---@param price number Custom price per hectare (0 = map default, 1-9999999 = custom)
+function RmFmSettings.setCustomPricePerHa(price)
+    Log:trace(">>> setCustomPricePerHa(price=%s)", tostring(price))
+    price = tonumber(price) or 0
+    price = math.floor(price)
+    if price > 0 then
+        price = math.max(RmFmSettings.MIN_PRICE_PER_HA,
+            math.min(RmFmSettings.MAX_PRICE_PER_HA, price))
+    else
+        price = 0  -- any non-positive value resets to map default
+    end
+    RmFmSettings.customPricePerHa = price
     RmFarmlandMarket.updateAllFarmlandPrices()
-    Log:info("Base price multiplier changed to %.2fx, updating all farmland prices", multiplier)
-
-    Log:trace("<<< setPriceMultiplier()")
+    if price > 0 then
+        Log:info("Custom base price set to %d/ha, updating all farmland prices", price)
+    else
+        Log:info("Base price reset to map default, updating all farmland prices")
+    end
+    Log:trace("<<< setCustomPricePerHa()")
 end
 
 --- Set negotiation enabled state (no network - use event for MP changes).
@@ -107,29 +115,37 @@ end
 -- UI CALLBACKS
 -- ============================================================================
 
+-- Forward declaration (defined in LIFECYCLE HOOKS section)
+local updateGameSettings
+
 --- Apply settings change: direct on server, event on remote client.
 ---@param availabilityPresetState number Availability preset state (1-6)
----@param priceMultiplierState number Price multiplier state (1-6)
+---@param customPricePerHa number Custom price per hectare (0 = map default)
 ---@param negotiationEnabledState number Negotiation enabled state (BinaryOption: 1=Off, 2=On)
-local function sendSettingsChangeRequest(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
-    Log:trace(">>> sendSettingsChangeRequest(preset=%d, mult=%d, neg=%d)",
-        availabilityPresetState, priceMultiplierState, negotiationEnabledState)
+local function sendSettingsChangeRequest(availabilityPresetState, customPricePerHa, negotiationEnabledState)
+    Log:trace(">>> sendSettingsChangeRequest(preset=%d, price=%d, neg=%d)",
+        availabilityPresetState, customPricePerHa, negotiationEnabledState)
     if g_server ~= nil then
         -- Host/server: apply directly and broadcast to remote clients
         RmFmSettings.setAvailabilityPreset(availabilityPresetState)
-        RmFmSettings.setPriceMultiplier(priceMultiplierState)
+        RmFmSettings.setCustomPricePerHa(customPricePerHa)
         RmFmSettings.setNegotiationEnabled(negotiationEnabledState)
         g_server:broadcastEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
+            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
         )
-        Log:info("Settings changed: preset=%s (%d) multiplier=%.2fx (%d) negotiation=%s",
+        Log:info("Settings changed: preset=%s (%d) price/ha=%d negotiation=%s",
             RmFmSettings.getPresetName(), availabilityPresetState,
-            RmFmSettings.getPriceMultiplier(), priceMultiplierState,
+            customPricePerHa,
             RmFmSettings.isNegotiationEnabled() and "on" or "off")
+        -- Refresh UI immediately so button text reflects the change
+        local settingsPage = g_inGameMenu ~= nil and g_inGameMenu.pageSettings or nil
+        if settingsPage ~= nil then
+            updateGameSettings(settingsPage)
+        end
     elseif g_client ~= nil then
         -- Remote client: send to server for validation
         g_client:getServerConnection():sendEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, priceMultiplierState, negotiationEnabledState)
+            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
         )
     end
     Log:trace("<<< sendSettingsChangeRequest()")
@@ -140,19 +156,81 @@ end
 ---@param state number New state (1-6, index into PRESET_ORDER)
 local function onAvailabilityPresetChanged(_, state)
     Log:trace(">>> onAvailabilityPresetChanged(state=%d)", state)
-    sendSettingsChangeRequest(state, RmFmSettings.priceMultiplierState,
+    sendSettingsChangeRequest(state, RmFmSettings.customPricePerHa,
         RmFmSettings.negotiationEnabledState)
     Log:trace("<<< onAvailabilityPresetChanged()")
 end
 
---- Callback: Price multiplier changed
----@param _ any Unused target (from raiseCallback)
----@param state number New state (1-6)
-local function onPriceMultiplierChanged(_, state)
-    Log:trace(">>> onPriceMultiplierChanged(state=%d)", state)
-    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, state,
+--- Restore focus and scroll position to price button after dialog closes.
+--- Deferred via Timer.createOneshot because the dialog callback fires before
+--- the dialog's close() resets focus - immediate setFocus gets overridden.
+local function schedulePriceButtonFocusRestore()
+    Timer.createOneshot(100, function()
+        local settingsPage = g_inGameMenu ~= nil and g_inGameMenu.pageSettings or nil
+        if settingsPage ~= nil and settingsPage.fmPricePerHaButton ~= nil then
+            local button = settingsPage.fmPricePerHaButton
+            FocusManager:setFocus(button)
+            local scrollPanel = button.parent
+            while scrollPanel ~= nil and scrollPanel:isa(ScrollingLayoutElement) == false do
+                scrollPanel = scrollPanel.parent
+            end
+            if scrollPanel ~= nil then
+                scrollPanel:scrollToMakeElementVisible(button)
+            end
+            Log:trace("FOCUS: Restored focus to price button")
+        end
+    end)
+end
+
+--- Callback: TextInputDialog result for price/ha
+---@param text string|nil User input text
+---@param clickedOk boolean Whether user clicked OK
+local function onPriceInputResult(text, clickedOk)
+    Log:trace(">>> onPriceInputResult(text=%s, ok=%s)", tostring(text), tostring(clickedOk))
+    if not clickedOk then
+        schedulePriceButtonFocusRestore()
+        Log:trace("<<< onPriceInputResult() cancelled")
+        return
+    end
+    local newPrice = 0  -- default = map default
+    if text ~= nil and text ~= "" then
+        local parsed = tonumber(text)
+        if parsed == nil then
+            Log:debug("PRICE_INPUT: Invalid input '%s', ignoring", text)
+            schedulePriceButtonFocusRestore()
+            Log:trace("<<< onPriceInputResult() invalid input")
+            return
+        end
+        newPrice = math.floor(parsed)
+        if newPrice <= 0 then
+            newPrice = 0  -- treat 0 or negative as reset
+        else
+            newPrice = math.max(RmFmSettings.MIN_PRICE_PER_HA,
+                math.min(RmFmSettings.MAX_PRICE_PER_HA, newPrice))
+        end
+    end
+    Log:debug("PRICE_INPUT: newPrice=%d (0=map default)", newPrice)
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, newPrice,
         RmFmSettings.negotiationEnabledState)
-    Log:trace("<<< onPriceMultiplierChanged()")
+    schedulePriceButtonFocusRestore()
+    Log:trace("<<< onPriceInputResult()")
+end
+
+--- Callback: Price/ha button clicked - opens TextInputDialog
+local function onPriceButtonClicked()
+    Log:trace(">>> onPriceButtonClicked()")
+    local effectivePrice = RmFmSettings.customPricePerHa
+    if effectivePrice == 0 and g_farmlandManager ~= nil then
+        effectivePrice = g_farmlandManager.pricePerHa or 0
+    end
+    local defaultText = effectivePrice > 0 and tostring(effectivePrice) or ""
+    local basePrice = g_farmlandManager ~= nil and g_farmlandManager.pricePerHa or 0
+    local prompt = string.format(
+        g_i18n:getText("rm_fm_settings_pricePerHa_dialogPrompt"),
+        g_i18n:formatMoney(basePrice, 0, true))
+    local confirmText = g_i18n:getText("rm_fm_settings_pricePerHa_dialogConfirm")
+    TextInputDialog.show(onPriceInputResult, nil, defaultText, prompt, nil, 7, confirmText)
+    Log:trace("<<< onPriceButtonClicked()")
 end
 
 --- Callback: Negotiation enabled changed
@@ -160,7 +238,7 @@ end
 ---@param state number New state (BinaryOption: 1=Off, 2=On)
 local function onNegotiationEnabledChanged(_, state)
     Log:trace(">>> onNegotiationEnabledChanged(state=%d)", state)
-    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
         state)
     Log:trace("<<< onNegotiationEnabledChanged()")
 end
@@ -220,6 +298,7 @@ function RmFmSettings.initGui()
     local sectionHeaderTemplate = nil
     local multiTextOptionTemplate = nil
     local binaryOptionTemplate = nil
+    local buttonTemplate = nil
 
     for _, element in pairs(scrollPanel.elements) do
         if element.name == "sectionHeader" and sectionHeaderTemplate == nil then
@@ -232,8 +311,12 @@ function RmFmSettings.initGui()
             if element.elements[1].typeName == "BinaryOption" and binaryOptionTemplate == nil then
                 binaryOptionTemplate = element
             end
+            if element.elements[1].typeName == "Button" and buttonTemplate == nil then
+                buttonTemplate = element
+            end
         end
-        if sectionHeaderTemplate ~= nil and multiTextOptionTemplate ~= nil and binaryOptionTemplate ~= nil then
+        if sectionHeaderTemplate ~= nil and multiTextOptionTemplate ~= nil
+                and binaryOptionTemplate ~= nil and buttonTemplate ~= nil then
             break
         end
     end
@@ -304,34 +387,41 @@ function RmFmSettings.initGui()
 
     settingsPage.fmNegotiationControl = negControl
 
-    -- Clone price multiplier (MultiTextOption)
-    local priceContainer = multiTextOptionTemplate:clone(scrollPanel)
-    updateFocusIds(priceContainer)
-    priceContainer.id = nil
-
-    local priceControl = priceContainer.elements[1]
-    local priceLabel = priceContainer.elements[2]
-
-    priceLabel:setText(g_i18n:getText("rm_fm_settings_priceMultiplier"))
-    priceLabel.id = nil
-    priceControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_priceMultiplier_tooltip"))
-    priceControl.id = "fmPriceMultiplier"
-    priceControl:setTexts(RmFmSettings.PRICE_MULTIPLIER_TEXTS)
-    priceControl:setState(RmFmSettings.priceMultiplierState)
-    priceControl.onClickCallback = onPriceMultiplierChanged
-
-    priceContainer:setVisible(true)
-    priceContainer:setDisabled(false)
-
-    settingsPage.fmPriceMultiplierControl = priceControl
-
     -- Track cloned containers for FocusManager registration
-    fmClonedControls = { header, availabilityContainer, negContainer, priceContainer }
+    fmClonedControls = { header, availabilityContainer, negContainer }
+
+    -- Clone price per ha button (skip if no button template found)
+    if buttonTemplate == nil then
+        Log:warning("SETTINGS: No button template found in settings layout, price/ha button not created")
+    else
+        local priceContainer = buttonTemplate:clone(scrollPanel)
+        updateFocusIds(priceContainer)
+        priceContainer.id = nil
+
+        local priceButton = priceContainer.elements[1]
+        local priceLabel = priceContainer.elements[2]
+
+        priceLabel:setText(g_i18n:getText("rm_fm_settings_pricePerHa"))
+        priceLabel.id = nil
+        priceButton:applyProfile("rmFmSettingsButton")
+        -- Tooltip is set dynamically in updateGameSettings() (Button children differ from MultiTextOption)
+        priceButton.id = "fmPricePerHa"
+        priceButton.isAlwaysFocusedOnOpen = false
+        priceButton.focused = false
+        priceButton.onClickCallback = onPriceButtonClicked
+
+        priceContainer:setVisible(true)
+        priceContainer:setDisabled(false)
+
+        settingsPage.fmPricePerHaButton = priceButton
+
+        fmClonedControls[#fmClonedControls + 1] = priceContainer
+    end
 
     scrollPanel:invalidateLayout()
 
     RmFmSettings.uiInitialized = true
-    Log:info("Settings GUI initialized (4 elements cloned, focusIds updated)")
+    Log:info("Settings GUI initialized (%d elements cloned, focusIds updated)", #fmClonedControls)
     Log:trace("<<< initGui()")
 end
 
@@ -341,26 +431,40 @@ end
 
 --- Hook: Sync settings UI state when settings frame opens
 ---@param settingsPage table InGameMenuSettingsFrame instance
-local function updateGameSettings(settingsPage)
+updateGameSettings = function(settingsPage)
     Log:trace(">>> updateGameSettings()")
 
     if settingsPage.fmAvailabilityControl ~= nil then
         settingsPage.fmAvailabilityControl:setState(RmFmSettings.availabilityPresetState)
     end
 
-    if settingsPage.fmPriceMultiplierControl ~= nil then
-        settingsPage.fmPriceMultiplierControl:setState(RmFmSettings.priceMultiplierState)
-
-        -- Update tooltip with map's base price (available now that map is loaded)
-        if g_farmlandManager ~= nil and g_farmlandManager.pricePerHa ~= nil then
-            local basePrice = g_farmlandManager.pricePerHa
-            local tooltip = string.format("%s\n%s: %s/ha",
-                g_i18n:getText("rm_fm_settings_priceMultiplier_tooltip"),
-                g_i18n:getText("rm_fm_settings_priceMultiplier_mapBase"),
-                g_i18n:formatMoney(basePrice, 0, true))
-            settingsPage.fmPriceMultiplierControl.elements[1]:setText(tooltip)
+    if settingsPage.fmPricePerHaButton ~= nil then
+        Log:trace("SETTINGS_UI: Updating price/ha button text")
+        local effectivePrice = RmFmSettings.customPricePerHa
+        local isDefault = (effectivePrice == 0)
+        if isDefault and g_farmlandManager ~= nil then
+            effectivePrice = g_farmlandManager.pricePerHa or 0
         end
-
+        local formattedPrice = g_i18n:formatMoney(effectivePrice, 0, true)
+        if isDefault then
+            settingsPage.fmPricePerHaButton:setText(
+                string.format(g_i18n:getText("rm_fm_settings_pricePerHa_buttonDefault"), formattedPrice))
+        else
+            settingsPage.fmPricePerHaButton:setText(
+                string.format(g_i18n:getText("rm_fm_settings_pricePerHa_buttonCustom"), formattedPrice))
+        end
+        -- Update tooltip with map default (guard: Button children may not have setText)
+        if g_farmlandManager ~= nil and g_farmlandManager.pricePerHa ~= nil then
+            local tooltipElement = settingsPage.fmPricePerHaButton.elements[1]
+            if tooltipElement ~= nil and tooltipElement.setText ~= nil then
+                local basePrice = g_farmlandManager.pricePerHa
+                local tooltip = string.format("%s\n%s: %s/ha",
+                    g_i18n:getText("rm_fm_settings_pricePerHa_tooltip"),
+                    g_i18n:getText("rm_fm_settings_pricePerHa_mapDefault"),
+                    g_i18n:formatMoney(basePrice, 0, true))
+                tooltipElement:setText(tooltip)
+            end
+        end
     end
 
     if settingsPage.fmNegotiationControl ~= nil then
@@ -382,11 +486,12 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.settings"
     RmFmSettings.availabilityPresetState = xmlFile:getValue(key .. "#availabilityPreset", 3)
-    RmFmSettings.priceMultiplierState = xmlFile:getValue(key .. "#priceMultiplier", 3)
+    local rawPrice = xmlFile:getValue(key .. "#customPricePerHa", 0)
+    RmFmSettings.setCustomPricePerHa(rawPrice)
     RmFmSettings.negotiationEnabledState = xmlFile:getValue(key .. "#negotiationEnabled", 1)
 
-    Log:debug("Settings loaded: preset=%s multiplier=%.2fx negotiation=%s",
-        RmFmSettings.getPresetName(), RmFmSettings.getPriceMultiplier(),
+    Log:debug("Settings loaded: preset=%s price/ha=%d negotiation=%s",
+        RmFmSettings.getPresetName(), RmFmSettings.customPricePerHa,
         RmFmSettings.isNegotiationEnabled() and "on" or "off")
 
     Log:trace("<<< loadFromXMLFile()")
@@ -405,7 +510,7 @@ function RmFmSettings.saveToXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.settings"
     xmlFile:setValue(key .. "#availabilityPreset", RmFmSettings.availabilityPresetState)
-    xmlFile:setValue(key .. "#priceMultiplier", RmFmSettings.priceMultiplierState)
+    xmlFile:setValue(key .. "#customPricePerHa", RmFmSettings.customPricePerHa)
     xmlFile:setValue(key .. "#negotiationEnabled", RmFmSettings.negotiationEnabledState)
 
     Log:debug("Settings saved to savegame")
@@ -425,7 +530,7 @@ function RmFmSettings.sendInitialClientState(_, connection)
     end
 
     connection:sendEvent(
-        RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.priceMultiplierState,
+        RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
             RmFmSettings.negotiationEnabledState)
     )
 
@@ -482,6 +587,9 @@ end
 -- ============================================================================
 -- MODULE INITIALIZATION (runs at source time)
 -- ============================================================================
+
+-- Load GUI profiles before initGui (needed for button profile)
+g_gui:loadProfiles(g_currentModDirectory .. "gui/guiProfiles.xml")
 
 RmFmSettings.initGui()
 RmFmSettings.setupHooks()

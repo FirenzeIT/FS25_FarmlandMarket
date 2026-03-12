@@ -5,8 +5,6 @@
     Sent by server after processing a RmNegotiationRequestEvent.
     Contains success/error status and a serialized session snapshot.
 
-    Chunk A: client-side just logs. Chunk C will add UI callback.
-
     Author: Ritter
 ]]
 

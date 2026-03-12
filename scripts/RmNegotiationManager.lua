@@ -1104,7 +1104,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
 end
 
 -- =============================================================================
--- CONSOLE COMMANDS (server-only for Chunk A)
+-- CONSOLE COMMANDS
 -- =============================================================================
 
 --- Console: Start negotiation
