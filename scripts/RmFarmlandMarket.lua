@@ -256,6 +256,45 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
 -- CONTEXT BOX DISPLAY
 -- ============================================================================
 
+--- Re-apply FM value overrides to the farmlandValue element.
+--- Called from showContextBox append AND from the PF compat hook (which runs
+--- after PF's AdditionalFieldBuyInfo:updateContextBox() overwrites the value).
+---@param contextBox table The context box GUI element
+---@param farmlandId number The farmland ID
+---@param farmland table The Farmland object
+local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
+    if contextBox == nil or farmland == nil then return end
+
+    local valueEl = contextBox:getDescendantByName("farmlandValue")
+    if valueEl == nil then return end
+
+    -- Listing price override (unowned + negotiation + listing exists)
+    local isOwned = farmland.farmId == g_currentMission:getFarmId()
+    if not isOwned and RmFmSettings.isNegotiationEnabled() then
+        local listingPrice = RmNegotiationManager.getListingPrice(farmlandId)
+        if listingPrice ~= nil then
+            valueEl:setText(g_i18n:formatMoney(listingPrice, 0, true, true))
+        end
+    end
+
+    -- "Not for sale" override (takes precedence over listing price)
+    if RmFmSettings.isAvailabilityEnabled()
+       and RmFmAvailability.isEligibleForAvailability(farmland)
+       and not RmFmAvailability.isForSale(farmlandId) then
+        valueEl:setText(g_i18n:getText("rm_fm_notForSale"))
+    end
+
+    -- Cooldown display (server only - clients get error on attempt)
+    if g_server ~= nil and RmFmSettings.isNegotiationEnabled() then
+        local playerFarmId = g_currentMission:getFarmId()
+        local cooldownInfo = RmNegotiationManager.getCooldownInfo(farmlandId, playerFarmId)
+        if cooldownInfo ~= nil and cooldownInfo.remaining > 0 then
+            valueEl:setText(valueEl:getText() .. "\n" .. string.format(
+                g_i18n:getText("rm_fm_neg_cooldownDisplay"), cooldownInfo.remaining))
+        end
+    end
+end
+
 --- Replace farmland value with "Not for sale" for unavailable farmlands.
 --- Runs after base showContextBox (and PF override if active).
 InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
@@ -282,72 +321,30 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
         end
 
         -- Determine label + value override based on field state
-        if contextBox.rmFmValueLabel ~= nil then
-            local isOwned = false
-            local farmlandId = nil
-            if hotspot ~= nil and hotspot.getFarmland ~= nil then
-                local fl = hotspot:getFarmland()
-                if fl ~= nil then
-                    farmlandId = fl.id
-                    isOwned = fl.farmId == g_currentMission:getFarmId()
-                end
+        local farmlandId = nil
+        local farmland = nil
+        if hotspot ~= nil and hotspot.getFarmland ~= nil then
+            farmland = hotspot:getFarmland()
+            if farmland ~= nil then
+                farmlandId = farmland.id
             end
+        end
 
+        -- Label overrides (PF doesn't touch labels, so this only runs here)
+        if contextBox.rmFmValueLabel ~= nil and farmland ~= nil then
+            local isOwned = farmland.farmId == g_currentMission:getFarmId()
             if isOwned and RmFmSettings.isNegotiationEnabled() then
-                -- Owned field with negotiation: "Market value:" with game's farmland.price
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_marketValue") .. ":")
-            elseif not isOwned and farmlandId ~= nil and RmFmSettings.isNegotiationEnabled() then
-                local listingPrice = RmNegotiationManager.getListingPrice(farmlandId)
-                if listingPrice ~= nil then
-                    -- Listed field with negotiation: "List price:" with seller's asking price
-                    contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
-                    if contextBox.rmFmValueElement ~= nil then
-                        contextBox.rmFmValueElement:setText(g_i18n:formatMoney(listingPrice, 0, true, true))
-                    end
-                else
-                    -- Unlisted or no listing price: still show "List price:" for consistency
-                    contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
-                end
+            elseif not isOwned and RmFmSettings.isNegotiationEnabled() then
+                contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
             else
-                -- No negotiation or no farmland: keep vanilla
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("ui_sellValue") .. ":")
             end
         end
 
-        if not RmFmSettings.isAvailabilityEnabled() then
-            return
-        end
-        if hotspot == nil or hotspot.getFarmland == nil then
-            return
-        end
-        local farmland = hotspot:getFarmland()
-        if farmland == nil then
-            return
-        end
-        if RmFmAvailability.isEligibleForAvailability(farmland)
-           and not RmFmAvailability.isForSale(farmland.id) then
-            contextBox:getDescendantByName("farmlandValue"):setText(
-                g_i18n:getText("rm_fm_notForSale"))
-            Log:debug("CONTEXT: Replaced value with 'Not for sale' for farmland %d", farmland.id)
-        end
-
-        -- Show cooldown info if applicable (server only - clients get error on attempt)
-        if g_server ~= nil and RmFmSettings.isNegotiationEnabled() then
-            local playerFarmId = g_currentMission:getFarmId()
-            local cooldownInfo = RmNegotiationManager.getCooldownInfo(farmland.id, playerFarmId)
-            if cooldownInfo ~= nil and cooldownInfo.remaining > 0 then
-                local cooldownText = string.format(
-                    g_i18n:getText("rm_fm_neg_cooldownDisplay"),
-                    cooldownInfo.remaining
-                )
-                contextBox:getDescendantByName("farmlandValue"):setText(
-                    contextBox:getDescendantByName("farmlandValue"):getText() ..
-                    "\n" .. cooldownText
-                )
-                Log:debug("CONTEXT: Added cooldown display for farmland %d (%d periods)",
-                    farmland.id, cooldownInfo.remaining)
-            end
-        end
+        -- Value overrides (listing price, not-for-sale, cooldown)
+        -- Uses shared helper so PF compat hook can re-apply after PF overwrites
+        applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     end
 )
 
@@ -983,6 +980,7 @@ local function onLoadMapFinished()
 
     -- Precision Farming compatibility: PF's AdditionalFieldBuyInfo:updateContextBox()
     -- asynchronously overwrites farmlandValue after our showContextBox append runs.
+    -- Re-apply ALL value overrides (listing price, not-for-sale, cooldown) via shared helper.
     -- PF globals live in its sandboxed mod environment (FS25 mod isolation), not in _G.
     local pfEnv = _G.FS25_precisionFarming
     if pfEnv ~= nil and pfEnv.g_precisionFarming ~= nil then
@@ -992,18 +990,13 @@ local function onLoadMapFinished()
             local origUpdateContextBox = pfBuyInfo.updateContextBox
             function pfBuyInfo:updateContextBox()
                 origUpdateContextBox(self)
-                if not RmFmSettings.isAvailabilityEnabled() then return end
                 if self.lastContextBox == nil then return end
                 local farmlandId = self.selectedFarmlandId
                 if farmlandId == nil then return end
                 local farmland = g_farmlandManager:getFarmlands()[farmlandId]
                 if farmland == nil then return end
-                if RmFmAvailability.isEligibleForAvailability(farmland)
-                   and not RmFmAvailability.isForSale(farmlandId) then
-                    self.lastContextBox:getDescendantByName("farmlandValue"):setText(
-                        g_i18n:getText("rm_fm_notForSale"))
-                    Log:debug("PF_COMPAT: Re-applied 'Not for sale' after PF update for farmland %d", farmlandId)
-                end
+                applyFarmlandValueOverrides(self.lastContextBox, farmlandId, farmland)
+                Log:debug("PF_COMPAT: Re-applied FM value overrides after PF update for farmland %d", farmlandId)
             end
         end
     end
