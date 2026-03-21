@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="106">
     <author>Ritter</author>
-    <version>0.5.0.0-dev.1</version>
+    <version>0.5.0.0</version>
     <title>
         <en>Farmland Market</en>
     </title>
@@ -26,7 +26,7 @@ Notes:
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
-0.5.0.0-dev (Beta):
+0.5.0.0 (Beta - 2026-03-21):
 - Changed base price setting from multiplier presets to direct price per hectare input
 - Fixed list price not showing correctly when Precision Farming mod is active
 - Fixed logger registration error when multiple Ritter mods are loaded

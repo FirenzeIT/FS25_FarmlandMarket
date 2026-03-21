@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0.0-dev (Beta):
+## 0.5.0.0 (Beta - 2026-03-21):
 - Changed base price setting from multiplier presets to direct price per hectare input
 - Fixed list price not showing correctly when Precision Farming mod is active
 - Fixed logger registration error when multiple Ritter mods are loaded
