@@ -378,6 +378,10 @@ function RmNegotiationUI.getErrorMessage(errorReason)
         return g_i18n:getText("rm_fm_neg_invalidFarmland")
     elseif errorReason == "listing_too_high" then
         return g_i18n:getText("rm_fm_neg_listingTooHigh2")
+    elseif errorReason == "offer_not_higher" then
+        return g_i18n:getText("rm_fm_neg_offerNotHigher")
+    elseif errorReason == "ask_not_lower" then
+        return g_i18n:getText("rm_fm_neg_askNotLower")
     end
     return string.format(g_i18n:getText("rm_fm_neg_error"), tostring(errorReason))
 end
@@ -395,6 +399,12 @@ handleResult = function(snapshot, errorReason)
 
     -- Error path
     if errorReason ~= nil then
+        -- Non-fatal errors: keep negotiation dialog open
+        if errorReason == "offer_not_higher" or errorReason == "ask_not_lower" then
+            local msg = RmNegotiationUI.getErrorMessage(errorReason)
+            InfoDialog.show(msg)
+            return
+        end
         closeNegotiationDialog()
         local msg = RmNegotiationUI.getErrorMessage(errorReason)
         InfoDialog.show(msg)

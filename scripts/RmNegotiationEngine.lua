@@ -51,6 +51,7 @@ RmNegotiationEngine.LISTED_BUY = {
         harder    = { 0.85, 0.97 },
         realistic = { 0.85, 0.98 },
     },
+    minFirstConcession = 0.01,
 }
 
 RmNegotiationEngine.UNLISTED_BUY = {
@@ -77,6 +78,7 @@ RmNegotiationEngine.UNLISTED_BUY = {
         harder    = { 1.25, 1.82 },
         realistic = { 1.28, 1.90 },
     },
+    minFirstConcession = 0.01,
 }
 
 RmNegotiationEngine.SELL = {
@@ -345,6 +347,19 @@ function RmNegotiationEngine.evaluateOffer(sellerProfile, offer, round)
     local base = sellerProfile.reservation + sellerProfile.stubbornness * (anchor - sellerProfile.reservation) * decay
     local noise = gaussianRandom(0, params.counterNoise * anchor)
     local counter = clamp(base + noise, sellerProfile.reservation, anchor)
+
+    -- Minimum first concession: ensure round 1 counter is below anchor
+    if round == 1 and params.minFirstConcession then
+        local maxFirstCounter = anchor * (1 - params.minFirstConcession)
+        Log:trace(">>> minFirstConcession check (counter=%.0f, maxFirstCounter=%.0f)", counter, maxFirstCounter)
+        if counter > maxFirstCounter then
+            Log:debug("FIRST_CONCESSION: counter=%.0f, maxFirstCounter=%.0f", counter, maxFirstCounter)
+            counter = maxFirstCounter
+            counter = math.max(counter, sellerProfile.reservation)
+            Log:debug("FIRST_CONCESSION: clamped=%.0f", counter)
+        end
+        Log:trace("<<< minFirstConcession = %.0f", counter)
+    end
 
     -- Convergence check
     if math.abs(offer - counter) / anchor < params.convergenceThreshold then

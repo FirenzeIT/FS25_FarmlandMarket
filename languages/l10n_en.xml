@@ -63,6 +63,8 @@
         <text name="rm_fm_neg_listingTooHigh2" text="The listing price was too high."/>
         <text name="rm_fm_neg_cancelConfirm" text="Walk away from this negotiation?"/>
         <text name="rm_fm_neg_insufficientFunds" text="You don't have enough money to complete this purchase."/>
+        <text name="rm_fm_neg_offerNotHigher" text="You must offer more than your previous bid."/>
+        <text name="rm_fm_neg_askNotLower" text="You must ask less than your previous asking price."/>
         <text name="rm_fm_neg_cooldownDisplay" text="The owner is not interested in negotiating right now. Try again in %d month(s)."/>
         <text name="rm_fm_neg_submit" text="Submit"/>
         <text name="rm_fm_neg_continue" text="Continue"/>

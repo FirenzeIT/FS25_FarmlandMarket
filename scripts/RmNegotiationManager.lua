@@ -178,6 +178,8 @@ function RmNegotiationManager.createSnapshot(session)
         finalPrice = session.finalPrice,
         anchorPrice = session.profile and session.profile.anchorPrice or nil,
         rejectFloor = session.profile and session.profile.rejectFloor or nil,
+        lastOffer = session.lastOffer,
+        lastAsk = session.lastAsk,
     }
 end
 
@@ -286,6 +288,7 @@ local function doStartListedBuy(farmlandId, farmId)
         round = 1,
         state = "active",
         lastCounter = nil,
+        lastOffer = 0,
         offers = {},
         pendingProposal = nil,
         outcome = nil,
@@ -344,6 +347,8 @@ local function doStartUnlistedBuy(farmlandId, farmId)
             round = 0,
             state = "completed",
             lastCounter = nil,
+            lastOffer = nil,
+            lastAsk = nil,
             offers = {},
             pendingProposal = nil,
             outcome = RmNegotiationEngine.OUTCOME_DISMISSED,
@@ -361,6 +366,7 @@ local function doStartUnlistedBuy(farmlandId, farmId)
         round = 1,
         state = "active",
         lastCounter = nil,
+        lastOffer = 0,
         offers = {},
         pendingProposal = nil,
         outcome = nil,
@@ -429,6 +435,7 @@ local function doStartSell(farmlandId, farmId, listingPrice)
         round = 1,
         state = "active",
         lastCounter = buyerProfile.npcOpening,
+        lastAsk = 0,
         offers = {},
         pendingProposal = nil,
         outcome = nil,
@@ -487,6 +494,12 @@ local function doSubmitOffer(farmId, amount)
         end
     end
 
+    -- Monotonic: player must increase offers (skip in exhausted-round acceptance path above)
+    if session.lastOffer > 0 and amount <= session.lastOffer then
+        Log:trace("<<< doSubmitOffer = nil, offer_not_higher (last=%d, new=%d)", session.lastOffer, amount)
+        return nil, "offer_not_higher"
+    end
+
     -- Call engine
     local result = RmNegotiationEngine.evaluateOffer(session.profile, amount, session.round)
     if result == nil then return nil, "engine_error" end
@@ -494,6 +507,7 @@ local function doSubmitOffer(farmId, amount)
     -- Record offer
     table.insert(session.offers, { round = session.round, offer = amount, counter = nil })
     local lastOfferIdx = #session.offers
+    session.lastOffer = amount
 
     -- Handle result
     if result.action == "accepted" then
@@ -574,6 +588,12 @@ local function doSubmitAsk(farmId, amount)
         end
     end
 
+    -- Monotonic: player must decrease asks (skip in exhausted-round acceptance path above)
+    if session.lastAsk > 0 and amount >= session.lastAsk then
+        Log:trace("<<< doSubmitAsk = nil, ask_not_lower (last=%d, new=%d)", session.lastAsk, amount)
+        return nil, "ask_not_lower"
+    end
+
     -- Call engine
     local result = RmNegotiationEngine.evaluatePlayerAsk(session.profile, amount, session.round)
     if result == nil then return nil, "engine_error" end
@@ -581,6 +601,7 @@ local function doSubmitAsk(farmId, amount)
     -- Record offer (npcResponse filled in below based on result)
     table.insert(session.offers, { round = session.round, npcOffer = session.lastCounter, playerAsk = amount, npcResponse = nil })
     local lastOfferIdx = #session.offers
+    session.lastAsk = amount
 
     -- Handle result
     if result.action == "accepted" then
