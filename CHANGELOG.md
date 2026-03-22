@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0.0-dev:
+- Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
+- Added save migration from old single toggle — existing saves automatically map to all three settings
+- Improved negotiation fairness — players must increase buy offers and decrease sell asks each round
+- Fixed seller counter-offer going below their minimum acceptable price during negotiation
+- Fixed NPC buyer offer exceeding their maximum willingness to pay during negotiation
+- Fixed seller's first counter sometimes equaling their opening demand with high stubbornness
+- Fixed buyer's opening offer not visible when entering counter-ask in sell dialog
+- Fixed negotiation dialog closing when submitting a non-monotonic offer/ask
+- Fixed negotiation defaulting to Off on fresh saves instead of On
+- Fixed listing prices and market values not updating when price per hectare is changed in settings
+
 ## 0.5.0.0 (Beta - 2026-03-21):
 - Changed base price setting from multiplier presets to direct price per hectare input
 - Fixed list price not showing correctly when Precision Farming mod is active
