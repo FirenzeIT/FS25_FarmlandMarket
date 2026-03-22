@@ -31,8 +31,12 @@
         <text name="rm_fm_btn_negotiateSale" text="Negotiate sale"/>
 
         <!-- Negotiation Settings -->
-        <text name="rm_fm_settings_negotiation" text="Negotiation"/>
-        <text name="rm_fm_settings_negotiation_tooltip" text="When enabled, buying and selling farmland requires negotiation instead of instant transactions. Prices are negotiated through multi-round offers and counter-offers."/>
+        <text name="rm_fm_settings_negotiateBuy" text="Negotiate purchases"/>
+        <text name="rm_fm_settings_negotiateBuy_tooltip" text="When buying a listed field, negotiate the price through offers and counter-offers instead of paying the list price instantly."/>
+        <text name="rm_fm_settings_negotiateSell" text="Negotiate sales"/>
+        <text name="rm_fm_settings_negotiateSell_tooltip" text="When selling your field, an NPC buyer negotiates through offers and counter-offers instead of an instant sale at market value."/>
+        <text name="rm_fm_settings_unlistedOffers" text="Unlisted offers"/>
+        <text name="rm_fm_settings_unlistedOffers_tooltip" text="Allow making offers on fields that are not listed for sale. The owner may refuse or demand a premium. Requires Field Availability to be enabled."/>
 
         <!-- Negotiation UI -->
         <text name="rm_fm_neg_listedOpening" text="This field is listed for %s. What's your offer?"/>

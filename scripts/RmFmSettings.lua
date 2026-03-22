@@ -10,6 +10,9 @@
 
     Settings:
     - Availability preset (MultiTextOption): off, easy, normal, hard, harder, realistic
+    - Negotiate purchases (BinaryOption): on/off — negotiate listed field buys
+    - Negotiate sales (BinaryOption): on/off — negotiate field sales
+    - Unlisted offers (BinaryOption): on/off — make offers on unlisted fields
     - Base price per hectare (Button + TextInputDialog): custom absolute price, 0 = map default
 
     Author: Ritter
@@ -26,7 +29,9 @@ local Log = RmLogging.getLogger("FarmlandMarket")
 -- Settings state (1-indexed for MultiTextOption)
 RmFmSettings.availabilityPresetState = 3   -- Default: 3 = Normal (index into PRESET_ORDER)
 RmFmSettings.customPricePerHa = 0          -- 0 = use map default, otherwise absolute price/ha (1-9999999)
-RmFmSettings.negotiationEnabledState = 2   -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
+RmFmSettings.negotiateBuyState = 2          -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
+RmFmSettings.negotiateSellState = 2         -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
+RmFmSettings.unlistedOffersState = 2        -- Default: 2 = On (BinaryOption: 1=Off, 2=On)
 
 -- Price per hectare bounds
 RmFmSettings.MIN_PRICE_PER_HA = 1
@@ -57,10 +62,30 @@ function RmFmSettings.getCustomPricePerHa()
     return RmFmSettings.customPricePerHa
 end
 
---- Check if negotiation system is enabled.
----@return boolean enabled
-function RmFmSettings.isNegotiationEnabled()
-    return RmFmSettings.negotiationEnabledState == 2
+--- Check if buy negotiation is enabled (listed fields).
+---@return boolean
+function RmFmSettings.isNegotiateBuyEnabled()
+    return RmFmSettings.negotiateBuyState == 2
+end
+
+--- Check if sell negotiation is enabled.
+---@return boolean
+function RmFmSettings.isNegotiateSellEnabled()
+    return RmFmSettings.negotiateSellState == 2
+end
+
+--- Check if unlisted offers are enabled.
+---@return boolean
+function RmFmSettings.isUnlistedOffersEnabled()
+    return RmFmSettings.unlistedOffersState == 2
+end
+
+--- Check if any negotiation feature is active (for shared concerns like cooldown display).
+---@return boolean
+function RmFmSettings.isAnyNegotiationEnabled()
+    return RmFmSettings.negotiateBuyState == 2
+        or RmFmSettings.negotiateSellState == 2
+        or RmFmSettings.unlistedOffersState == 2
 end
 
 -- ============================================================================
@@ -101,14 +126,34 @@ function RmFmSettings.setCustomPricePerHa(price)
     Log:trace("<<< setCustomPricePerHa()")
 end
 
---- Set negotiation enabled state (no network - use event for MP changes).
----@param state number State index (BinaryOption: 1=Off, 2=On)
-function RmFmSettings.setNegotiationEnabled(state)
-    Log:trace(">>> setNegotiationEnabled(state=%d)", state)
-    RmFmSettings.negotiationEnabledState = state
-    Log:debug("SETTINGS: Negotiation = %s (state=%d)",
-        RmFmSettings.isNegotiationEnabled() and "enabled" or "disabled", state)
-    Log:trace("<<< setNegotiationEnabled()")
+--- Set negotiate buy state (no network - use event for MP changes).
+---@param state number BinaryOption: 1=Off, 2=On
+function RmFmSettings.setNegotiateBuy(state)
+    Log:trace(">>> setNegotiateBuy(state=%d)", state)
+    RmFmSettings.negotiateBuyState = state
+    Log:debug("SETTINGS: Negotiate buy = %s (state=%d)",
+        RmFmSettings.isNegotiateBuyEnabled() and "enabled" or "disabled", state)
+    Log:trace("<<< setNegotiateBuy()")
+end
+
+--- Set negotiate sell state (no network - use event for MP changes).
+---@param state number BinaryOption: 1=Off, 2=On
+function RmFmSettings.setNegotiateSell(state)
+    Log:trace(">>> setNegotiateSell(state=%d)", state)
+    RmFmSettings.negotiateSellState = state
+    Log:debug("SETTINGS: Negotiate sell = %s (state=%d)",
+        RmFmSettings.isNegotiateSellEnabled() and "enabled" or "disabled", state)
+    Log:trace("<<< setNegotiateSell()")
+end
+
+--- Set unlisted offers state (no network - use event for MP changes).
+---@param state number BinaryOption: 1=Off, 2=On
+function RmFmSettings.setUnlistedOffers(state)
+    Log:trace(">>> setUnlistedOffers(state=%d)", state)
+    RmFmSettings.unlistedOffersState = state
+    Log:debug("SETTINGS: Unlisted offers = %s (state=%d)",
+        RmFmSettings.isUnlistedOffersEnabled() and "enabled" or "disabled", state)
+    Log:trace("<<< setUnlistedOffers()")
 end
 
 -- ============================================================================
@@ -121,22 +166,29 @@ local updateGameSettings
 --- Apply settings change: direct on server, event on remote client.
 ---@param availabilityPresetState number Availability preset state (1-6)
 ---@param customPricePerHa number Custom price per hectare (0 = map default)
----@param negotiationEnabledState number Negotiation enabled state (BinaryOption: 1=Off, 2=On)
-local function sendSettingsChangeRequest(availabilityPresetState, customPricePerHa, negotiationEnabledState)
-    Log:trace(">>> sendSettingsChangeRequest(preset=%d, price=%d, neg=%d)",
-        availabilityPresetState, customPricePerHa, negotiationEnabledState)
+---@param negotiateBuyState number Negotiate buy state (BinaryOption: 1=Off, 2=On)
+---@param negotiateSellState number Negotiate sell state (BinaryOption: 1=Off, 2=On)
+---@param unlistedOffersState number Unlisted offers state (BinaryOption: 1=Off, 2=On)
+local function sendSettingsChangeRequest(availabilityPresetState, customPricePerHa,
+        negotiateBuyState, negotiateSellState, unlistedOffersState)
+    Log:trace(">>> sendSettingsChangeRequest(preset=%d, price=%d, negBuy=%d, negSell=%d, unlisted=%d)",
+        availabilityPresetState, customPricePerHa, negotiateBuyState, negotiateSellState, unlistedOffersState)
     if g_server ~= nil then
         -- Host/server: apply directly and broadcast to remote clients
         RmFmSettings.setAvailabilityPreset(availabilityPresetState)
         RmFmSettings.setCustomPricePerHa(customPricePerHa)
-        RmFmSettings.setNegotiationEnabled(negotiationEnabledState)
+        RmFmSettings.setNegotiateBuy(negotiateBuyState)
+        RmFmSettings.setNegotiateSell(negotiateSellState)
+        RmFmSettings.setUnlistedOffers(unlistedOffersState)
         g_server:broadcastEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
+            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa,
+                negotiateBuyState, negotiateSellState, unlistedOffersState)
         )
-        Log:info("Settings changed: preset=%s (%d) price/ha=%d negotiation=%s",
-            RmFmSettings.getPresetName(), availabilityPresetState,
-            customPricePerHa,
-            RmFmSettings.isNegotiationEnabled() and "on" or "off")
+        Log:info("Settings changed: preset=%s (%d) price/ha=%d negBuy=%s negSell=%s unlisted=%s",
+            RmFmSettings.getPresetName(), availabilityPresetState, customPricePerHa,
+            RmFmSettings.isNegotiateBuyEnabled() and "on" or "off",
+            RmFmSettings.isNegotiateSellEnabled() and "on" or "off",
+            RmFmSettings.isUnlistedOffersEnabled() and "on" or "off")
         -- Refresh UI immediately so button text reflects the change
         local settingsPage = g_inGameMenu ~= nil and g_inGameMenu.pageSettings or nil
         if settingsPage ~= nil then
@@ -145,7 +197,8 @@ local function sendSettingsChangeRequest(availabilityPresetState, customPricePer
     elseif g_client ~= nil then
         -- Remote client: send to server for validation
         g_client:getServerConnection():sendEvent(
-            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
+            RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa,
+                negotiateBuyState, negotiateSellState, unlistedOffersState)
         )
     end
     Log:trace("<<< sendSettingsChangeRequest()")
@@ -157,7 +210,7 @@ end
 local function onAvailabilityPresetChanged(_, state)
     Log:trace(">>> onAvailabilityPresetChanged(state=%d)", state)
     sendSettingsChangeRequest(state, RmFmSettings.customPricePerHa,
-        RmFmSettings.negotiationEnabledState)
+        RmFmSettings.negotiateBuyState, RmFmSettings.negotiateSellState, RmFmSettings.unlistedOffersState)
     Log:trace("<<< onAvailabilityPresetChanged()")
 end
 
@@ -211,7 +264,7 @@ local function onPriceInputResult(text, clickedOk)
     end
     Log:debug("PRICE_INPUT: newPrice=%d (0=map default)", newPrice)
     sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, newPrice,
-        RmFmSettings.negotiationEnabledState)
+        RmFmSettings.negotiateBuyState, RmFmSettings.negotiateSellState, RmFmSettings.unlistedOffersState)
     schedulePriceButtonFocusRestore()
     Log:trace("<<< onPriceInputResult()")
 end
@@ -233,14 +286,34 @@ local function onPriceButtonClicked()
     Log:trace("<<< onPriceButtonClicked()")
 end
 
---- Callback: Negotiation enabled changed
+--- Callback: Negotiate purchases changed
 ---@param _ any Unused target (from raiseCallback)
 ---@param state number New state (BinaryOption: 1=Off, 2=On)
-local function onNegotiationEnabledChanged(_, state)
-    Log:trace(">>> onNegotiationEnabledChanged(state=%d)", state)
+local function onNegotiateBuyChanged(_, state)
+    Log:trace(">>> onNegotiateBuyChanged(state=%d)", state)
     sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
-        state)
-    Log:trace("<<< onNegotiationEnabledChanged()")
+        state, RmFmSettings.negotiateSellState, RmFmSettings.unlistedOffersState)
+    Log:trace("<<< onNegotiateBuyChanged()")
+end
+
+--- Callback: Negotiate sales changed
+---@param _ any Unused target (from raiseCallback)
+---@param state number New state (BinaryOption: 1=Off, 2=On)
+local function onNegotiateSellChanged(_, state)
+    Log:trace(">>> onNegotiateSellChanged(state=%d)", state)
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
+        RmFmSettings.negotiateBuyState, state, RmFmSettings.unlistedOffersState)
+    Log:trace("<<< onNegotiateSellChanged()")
+end
+
+--- Callback: Unlisted offers changed
+---@param _ any Unused target (from raiseCallback)
+---@param state number New state (BinaryOption: 1=Off, 2=On)
+local function onUnlistedOffersChanged(_, state)
+    Log:trace(">>> onUnlistedOffersChanged(state=%d)", state)
+    sendSettingsChangeRequest(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
+        RmFmSettings.negotiateBuyState, RmFmSettings.negotiateSellState, state)
+    Log:trace("<<< onUnlistedOffersChanged()")
 end
 
 -- ============================================================================
@@ -360,35 +433,78 @@ function RmFmSettings.initGui()
     -- Store reference for state updates in updateGameSettings
     settingsPage.fmAvailabilityControl = availabilityControl
 
-    -- Clone negotiation enabled toggle (BinaryOption: 1=Off, 2=On)
-    local negTemplate = binaryOptionTemplate or multiTextOptionTemplate
-    local negContainer = negTemplate:clone(scrollPanel)
-    updateFocusIds(negContainer)
-    negContainer.id = nil
+    -- Clone negotiate purchases toggle (BinaryOption: 1=Off, 2=On)
+    local negBuyTemplate = binaryOptionTemplate or multiTextOptionTemplate
+    local negBuyContainer = negBuyTemplate:clone(scrollPanel)
+    updateFocusIds(negBuyContainer)
+    negBuyContainer.id = nil
 
-    local negControl = negContainer.elements[1]
-    local negLabel = negContainer.elements[2]
+    local negBuyControl = negBuyContainer.elements[1]
+    local negBuyLabel = negBuyContainer.elements[2]
 
-    negLabel:setText(g_i18n:getText("rm_fm_settings_negotiation"))
-    negLabel.id = nil
-    negControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_negotiation_tooltip"))
-    negControl.id = "fmNegotiationEnabled"
+    negBuyLabel:setText(g_i18n:getText("rm_fm_settings_negotiateBuy"))
+    negBuyLabel.id = nil
+    negBuyControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_negotiateBuy_tooltip"))
+    negBuyControl.id = "fmNegotiateBuy"
     if binaryOptionTemplate == nil then
-        -- Fallback: MultiTextOption if no BinaryOption template found
-        negControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
+        negBuyControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
     end
     -- NOTE: Do NOT call setState here for BinaryOption. The slider positions itself
     -- based on element dimensions which are zero at source time. updateGameSettings
     -- will set the correct state when the frame opens with real dimensions.
-    negControl.onClickCallback = onNegotiationEnabledChanged
+    negBuyControl.onClickCallback = onNegotiateBuyChanged
 
-    negContainer:setVisible(true)
-    negContainer:setDisabled(false)
+    negBuyContainer:setVisible(true)
+    negBuyContainer:setDisabled(false)
 
-    settingsPage.fmNegotiationControl = negControl
+    settingsPage.fmNegotiateBuyControl = negBuyControl
 
-    -- Track cloned containers for FocusManager registration
-    fmClonedControls = { header, availabilityContainer, negContainer }
+    -- Clone negotiate sales toggle (BinaryOption: 1=Off, 2=On)
+    local negSellContainer = negBuyTemplate:clone(scrollPanel)
+    updateFocusIds(negSellContainer)
+    negSellContainer.id = nil
+
+    local negSellControl = negSellContainer.elements[1]
+    local negSellLabel = negSellContainer.elements[2]
+
+    negSellLabel:setText(g_i18n:getText("rm_fm_settings_negotiateSell"))
+    negSellLabel.id = nil
+    negSellControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_negotiateSell_tooltip"))
+    negSellControl.id = "fmNegotiateSell"
+    if binaryOptionTemplate == nil then
+        negSellControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
+    end
+    negSellControl.onClickCallback = onNegotiateSellChanged
+
+    negSellContainer:setVisible(true)
+    negSellContainer:setDisabled(false)
+
+    settingsPage.fmNegotiateSellControl = negSellControl
+
+    -- Clone unlisted offers toggle (BinaryOption: 1=Off, 2=On)
+    local unlistedContainer = negBuyTemplate:clone(scrollPanel)
+    updateFocusIds(unlistedContainer)
+    unlistedContainer.id = nil
+
+    local unlistedControl = unlistedContainer.elements[1]
+    local unlistedLabel = unlistedContainer.elements[2]
+
+    unlistedLabel:setText(g_i18n:getText("rm_fm_settings_unlistedOffers"))
+    unlistedLabel.id = nil
+    unlistedControl.elements[1]:setText(g_i18n:getText("rm_fm_settings_unlistedOffers_tooltip"))
+    unlistedControl.id = "fmUnlistedOffers"
+    if binaryOptionTemplate == nil then
+        unlistedControl:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
+    end
+    unlistedControl.onClickCallback = onUnlistedOffersChanged
+
+    unlistedContainer:setVisible(true)
+    unlistedContainer:setDisabled(false)
+
+    settingsPage.fmUnlistedOffersControl = unlistedControl
+
+    -- Track cloned containers for FocusManager registration (visual order)
+    fmClonedControls = { header, availabilityContainer, negBuyContainer, negSellContainer, unlistedContainer }
 
     -- Clone price per ha button (skip if no button template found)
     if buttonTemplate == nil then
@@ -467,8 +583,14 @@ updateGameSettings = function(settingsPage)
         end
     end
 
-    if settingsPage.fmNegotiationControl ~= nil then
-        settingsPage.fmNegotiationControl:setState(RmFmSettings.negotiationEnabledState)
+    if settingsPage.fmNegotiateBuyControl ~= nil then
+        settingsPage.fmNegotiateBuyControl:setState(RmFmSettings.negotiateBuyState)
+    end
+    if settingsPage.fmNegotiateSellControl ~= nil then
+        settingsPage.fmNegotiateSellControl:setState(RmFmSettings.negotiateSellState)
+    end
+    if settingsPage.fmUnlistedOffersControl ~= nil then
+        settingsPage.fmUnlistedOffersControl:setState(RmFmSettings.unlistedOffersState)
     end
 
     Log:trace("<<< updateGameSettings()")
@@ -488,11 +610,26 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
     RmFmSettings.availabilityPresetState = xmlFile:getValue(key .. "#availabilityPreset", 3)
     local rawPrice = xmlFile:getValue(key .. "#customPricePerHa", 0)
     RmFmSettings.setCustomPricePerHa(rawPrice)
-    RmFmSettings.negotiationEnabledState = xmlFile:getValue(key .. "#negotiationEnabled", 1)
+    -- Migration: old single toggle → three granular toggles
+    local oldNeg = xmlFile:getValue(key .. "#negotiationEnabled")
+    if oldNeg ~= nil then
+        -- Old save: map single value to all three toggles
+        RmFmSettings.negotiateBuyState = oldNeg
+        RmFmSettings.negotiateSellState = oldNeg
+        RmFmSettings.unlistedOffersState = oldNeg
+        Log:info("MIGRATION: Mapped old negotiationEnabled=%d to all three toggles", oldNeg)
+    else
+        -- New save: load individual attributes (default 2=On, fixing pre-existing bug)
+        RmFmSettings.negotiateBuyState = xmlFile:getValue(key .. "#negotiateBuy", 2)
+        RmFmSettings.negotiateSellState = xmlFile:getValue(key .. "#negotiateSell", 2)
+        RmFmSettings.unlistedOffersState = xmlFile:getValue(key .. "#unlistedOffers", 2)
+    end
 
-    Log:debug("Settings loaded: preset=%s price/ha=%d negotiation=%s",
+    Log:debug("Settings loaded: preset=%s price/ha=%d negBuy=%s negSell=%s unlisted=%s",
         RmFmSettings.getPresetName(), RmFmSettings.customPricePerHa,
-        RmFmSettings.isNegotiationEnabled() and "on" or "off")
+        RmFmSettings.isNegotiateBuyEnabled() and "on" or "off",
+        RmFmSettings.isNegotiateSellEnabled() and "on" or "off",
+        RmFmSettings.isUnlistedOffersEnabled() and "on" or "off")
 
     Log:trace("<<< loadFromXMLFile()")
 end
@@ -511,7 +648,9 @@ function RmFmSettings.saveToXMLFile(xmlFile)
     local key = "rmFarmlandMarket.settings"
     xmlFile:setValue(key .. "#availabilityPreset", RmFmSettings.availabilityPresetState)
     xmlFile:setValue(key .. "#customPricePerHa", RmFmSettings.customPricePerHa)
-    xmlFile:setValue(key .. "#negotiationEnabled", RmFmSettings.negotiationEnabledState)
+    xmlFile:setValue(key .. "#negotiateBuy", RmFmSettings.negotiateBuyState)
+    xmlFile:setValue(key .. "#negotiateSell", RmFmSettings.negotiateSellState)
+    xmlFile:setValue(key .. "#unlistedOffers", RmFmSettings.unlistedOffersState)
 
     Log:debug("Settings saved to savegame")
 
@@ -531,7 +670,7 @@ function RmFmSettings.sendInitialClientState(_, connection)
 
     connection:sendEvent(
         RmSettingsSyncEvent.new(RmFmSettings.availabilityPresetState, RmFmSettings.customPricePerHa,
-            RmFmSettings.negotiationEnabledState)
+            RmFmSettings.negotiateBuyState, RmFmSettings.negotiateSellState, RmFmSettings.unlistedOffersState)
     )
 
     Log:trace("<<< sendInitialClientState()")

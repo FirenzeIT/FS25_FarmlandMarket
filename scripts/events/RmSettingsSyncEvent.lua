@@ -5,6 +5,9 @@
     Settings synced:
     - availabilityPresetState (Int32) - 1=off, 2=easy, 3=normal, 4=hard, 5=harder, 6=realistic
     - customPricePerHa (Int32) - absolute price per hectare (0 = map default)
+    - negotiateBuyState (Int32) - 1=Off, 2=On
+    - negotiateSellState (Int32) - 1=Off, 2=On
+    - unlistedOffersState (Int32) - 1=Off, 2=On
 
     Flow:
     - Client changes setting -> sends event to server (no local apply)
@@ -33,15 +36,20 @@ end
 --- Create new event with data
 ---@param availabilityPresetState number Availability preset state (1-6)
 ---@param customPricePerHa number Custom price per hectare (0 = map default)
----@param negotiationEnabledState number Negotiation enabled state (1=Off, 2=On)
+---@param negotiateBuyState number Negotiate buy state (1=Off, 2=On)
+---@param negotiateSellState number Negotiate sell state (1=Off, 2=On)
+---@param unlistedOffersState number Unlisted offers state (1=Off, 2=On)
 ---@return table event
-function RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa, negotiationEnabledState)
-    Log:trace(">>> RmSettingsSyncEvent.new(availabilityPresetState=%d, customPricePerHa=%d, neg=%d)",
-        availabilityPresetState, customPricePerHa, negotiationEnabledState)
+function RmSettingsSyncEvent.new(availabilityPresetState, customPricePerHa,
+        negotiateBuyState, negotiateSellState, unlistedOffersState)
+    Log:trace(">>> RmSettingsSyncEvent.new(preset=%d, price=%d, negBuy=%d, negSell=%d, unlisted=%d)",
+        availabilityPresetState, customPricePerHa, negotiateBuyState, negotiateSellState, unlistedOffersState)
     local self = Event.new(Mt)
     self.availabilityPresetState = availabilityPresetState
     self.customPricePerHa = customPricePerHa
-    self.negotiationEnabledState = negotiationEnabledState
+    self.negotiateBuyState = negotiateBuyState
+    self.negotiateSellState = negotiateSellState
+    self.unlistedOffersState = unlistedOffersState
     Log:trace("<<< RmSettingsSyncEvent.new()")
     return self
 end
@@ -50,11 +58,14 @@ end
 ---@param streamId number Stream ID
 ---@param connection table Connection object
 function RmSettingsSyncEvent:writeStream(streamId, connection)
-    Log:trace(">>> RmSettingsSyncEvent:writeStream(availabilityPresetState=%d, customPricePerHa=%d, neg=%d)",
-        self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
+    Log:trace(">>> RmSettingsSyncEvent:writeStream(preset=%d, price=%d, negBuy=%d, negSell=%d, unlisted=%d)",
+        self.availabilityPresetState, self.customPricePerHa,
+        self.negotiateBuyState, self.negotiateSellState, self.unlistedOffersState)
     streamWriteInt32(streamId, self.availabilityPresetState)
     streamWriteInt32(streamId, self.customPricePerHa)
-    streamWriteInt32(streamId, self.negotiationEnabledState)
+    streamWriteInt32(streamId, self.negotiateBuyState)
+    streamWriteInt32(streamId, self.negotiateSellState)
+    streamWriteInt32(streamId, self.unlistedOffersState)
     Log:trace("<<< RmSettingsSyncEvent:writeStream()")
 end
 
@@ -65,9 +76,12 @@ function RmSettingsSyncEvent:readStream(streamId, connection)
     Log:trace(">>> RmSettingsSyncEvent:readStream()")
     self.availabilityPresetState = streamReadInt32(streamId)
     self.customPricePerHa = streamReadInt32(streamId)
-    self.negotiationEnabledState = streamReadInt32(streamId)
-    Log:trace("    Read: availabilityPresetState=%d, customPricePerHa=%d, neg=%d",
-        self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
+    self.negotiateBuyState = streamReadInt32(streamId)
+    self.negotiateSellState = streamReadInt32(streamId)
+    self.unlistedOffersState = streamReadInt32(streamId)
+    Log:trace("    Read: preset=%d, price=%d, negBuy=%d, negSell=%d, unlisted=%d",
+        self.availabilityPresetState, self.customPricePerHa,
+        self.negotiateBuyState, self.negotiateSellState, self.unlistedOffersState)
     self:run(connection)
     Log:trace("<<< RmSettingsSyncEvent:readStream()")
 end
@@ -92,28 +106,34 @@ function RmSettingsSyncEvent:run(connection)
             return
         end
 
-        Log:info("Applying settings: preset=%d price/ha=%d negotiation=%d",
-            self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
+        Log:info("Applying settings: preset=%d price/ha=%d negBuy=%d negSell=%d unlisted=%d",
+            self.availabilityPresetState, self.customPricePerHa,
+            self.negotiateBuyState, self.negotiateSellState, self.unlistedOffersState)
 
         -- Apply on server (server IS the host in listen server mode)
         RmFmSettings.setAvailabilityPreset(self.availabilityPresetState)
         RmFmSettings.setCustomPricePerHa(self.customPricePerHa)
-        RmFmSettings.setNegotiationEnabled(self.negotiationEnabledState)
+        RmFmSettings.setNegotiateBuy(self.negotiateBuyState)
+        RmFmSettings.setNegotiateSell(self.negotiateSellState)
+        RmFmSettings.setUnlistedOffers(self.unlistedOffersState)
 
         -- Broadcast to all remote clients (host already applied above)
         Log:debug("SYNC: Broadcasting settings to all clients")
         g_server:broadcastEvent(
             RmSettingsSyncEvent.new(self.availabilityPresetState, self.customPricePerHa,
-                self.negotiationEnabledState)
+                self.negotiateBuyState, self.negotiateSellState, self.unlistedOffersState)
         )
     else
         -- CLIENT: Received from server broadcast - apply
-        Log:info("Received settings from server: preset=%d price/ha=%d negotiation=%d",
-            self.availabilityPresetState, self.customPricePerHa, self.negotiationEnabledState)
+        Log:info("Received settings from server: preset=%d price/ha=%d negBuy=%d negSell=%d unlisted=%d",
+            self.availabilityPresetState, self.customPricePerHa,
+            self.negotiateBuyState, self.negotiateSellState, self.unlistedOffersState)
 
         RmFmSettings.setAvailabilityPreset(self.availabilityPresetState)
         RmFmSettings.setCustomPricePerHa(self.customPricePerHa)
-        RmFmSettings.setNegotiationEnabled(self.negotiationEnabledState)
+        RmFmSettings.setNegotiateBuy(self.negotiateBuyState)
+        RmFmSettings.setNegotiateSell(self.negotiateSellState)
+        RmFmSettings.setUnlistedOffers(self.unlistedOffersState)
     end
 
     Log:trace("<<< RmSettingsSyncEvent:run()")

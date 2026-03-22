@@ -651,12 +651,6 @@ local originalOnClickSell = InGameMenuMapFrame.onClickSell
 local function onClickBuyInterceptor(self)
     Log:trace(">>> onClickBuy interceptor")
 
-    -- Skip if negotiation disabled
-    if not RmFmSettings.isNegotiationEnabled() then
-        Log:trace("  Negotiation disabled, falling through to vanilla")
-        return originalOnClickBuy(self)
-    end
-
     -- Get current hotspot farmland
     local hotspot = self.currentHotspot
     if hotspot == nil or hotspot.getFarmland == nil then
@@ -684,6 +678,16 @@ local function onClickBuyInterceptor(self)
         return originalOnClickBuy(self)
     end
 
+    -- Granular negotiation checks
+    if isListed and not RmFmSettings.isNegotiateBuyEnabled() then
+        Log:trace("  Listed field, negotiate buy disabled, falling through to vanilla")
+        return originalOnClickBuy(self)
+    end
+    if not isListed and not RmFmSettings.isUnlistedOffersEnabled() then
+        Log:trace("  Unlisted field, unlisted offers disabled, falling through to vanilla")
+        return originalOnClickBuy(self)
+    end
+
     -- Start negotiation
     RmNegotiationUI.startBuyNegotiation(farmlandId, farmId, isListed)
     Log:trace("<<< onClickBuy interceptor [negotiation started]")
@@ -694,8 +698,8 @@ end
 local function onClickSellInterceptor(self)
     Log:trace(">>> onClickSell interceptor")
 
-    -- Skip if negotiation disabled
-    if not RmFmSettings.isNegotiationEnabled() then
+    -- Skip if sell negotiation disabled
+    if not RmFmSettings.isNegotiateSellEnabled() then
         return originalOnClickSell(self)
     end
 

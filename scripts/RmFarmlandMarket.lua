@@ -217,12 +217,12 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
             if hotspot ~= nil and hotspot.getFarmland ~= nil then
                 local farmland = hotspot:getFarmland()
                 if farmland ~= nil and not RmFmAvailability.isForSale(farmland.id) then
-                    if RmFmSettings.isNegotiationEnabled()
+                    if RmFmSettings.isUnlistedOffersEnabled()
                        and RmFmAvailability.isEligibleForAvailability(farmland) then
-                        -- Negotiation on: keep canBuy=true for unlisted negotiation
+                        -- Unlisted offers on: keep canBuy=true for unlisted negotiation
                         Log:debug("AVAIL: Allowing buy for unlisted negotiation on farmland %d", farmland.id)
                     else
-                        -- Negotiation off: suppress buy
+                        -- Unlisted offers off: suppress buy
                         canBuy = false
                         Log:debug("AVAIL: Suppressed buy button for unavailable farmland %d", farmland.id)
                     end
@@ -232,24 +232,35 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
 
         superFunc(self, canEnter, canReset, canSellVehicle, canVisit, canSetMarker, removeMarker, canBuy, canSell, canManage)
 
-        -- Relabel BUY/SELL buttons when negotiation is enabled.
+        -- Relabel BUY/SELL buttons based on granular negotiation settings.
         -- Use .title for direct text override (takes precedence over .text l10n key)
         -- Always clear/set: previous .title persists on the action object across calls.
         local actions = InGameMenuMapFrame.ACTIONS
-        if RmFmSettings.isNegotiationEnabled() then
-            if canBuy and self.contextActions[actions.BUY].isActive then
-                self.contextActions[actions.BUY].title = g_i18n:getText("rm_fm_btn_makeOffer")
-            else
-                self.contextActions[actions.BUY].title = nil
+
+        -- BUY button label
+        local buyAction = self.contextActions[actions.BUY]
+        if canBuy and buyAction.isActive then
+            local shouldNegBuy = false
+            local hotspot = self.currentHotspot
+            if hotspot ~= nil and hotspot.getFarmland ~= nil then
+                local farmland = hotspot:getFarmland()
+                if farmland ~= nil then
+                    local isListed = RmFmAvailability.isForSale(farmland.id)
+                    shouldNegBuy = (isListed and RmFmSettings.isNegotiateBuyEnabled())
+                        or (not isListed and RmFmSettings.isUnlistedOffersEnabled())
+                end
             end
-            if canSell and self.contextActions[actions.SELL].isActive then
-                self.contextActions[actions.SELL].title = g_i18n:getText("rm_fm_btn_negotiateSale")
-            else
-                self.contextActions[actions.SELL].title = nil
-            end
+            buyAction.title = shouldNegBuy and g_i18n:getText("rm_fm_btn_makeOffer") or nil
         else
-            self.contextActions[actions.BUY].title = nil
-            self.contextActions[actions.SELL].title = nil
+            buyAction.title = nil
+        end
+
+        -- SELL button label
+        local sellAction = self.contextActions[actions.SELL]
+        if canSell and sellAction.isActive and RmFmSettings.isNegotiateSellEnabled() then
+            sellAction.title = g_i18n:getText("rm_fm_btn_negotiateSale")
+        else
+            sellAction.title = nil
         end
     end
 )
@@ -270,9 +281,11 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     local valueEl = contextBox:getDescendantByName("farmlandValue")
     if valueEl == nil then return end
 
-    -- Listing price override (unowned + negotiation + listing exists)
+    -- Listing price override (unowned + listed + negotiate buy on)
+    -- Unlisted fields never show a listing price — the buyer makes a blind offer
     local isOwned = farmland.farmId == g_currentMission:getFarmId()
-    if not isOwned and RmFmSettings.isNegotiationEnabled() then
+    if not isOwned and RmFmSettings.isNegotiateBuyEnabled()
+       and RmFmAvailability.isForSale(farmlandId) then
         local listingPrice = RmNegotiationManager.getListingPrice(farmlandId)
         if listingPrice ~= nil then
             valueEl:setText(g_i18n:formatMoney(listingPrice, 0, true, true))
@@ -287,7 +300,7 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     end
 
     -- Cooldown display (server only - clients get error on attempt)
-    if g_server ~= nil and RmFmSettings.isNegotiationEnabled() then
+    if g_server ~= nil and RmFmSettings.isAnyNegotiationEnabled() then
         local playerFarmId = g_currentMission:getFarmId()
         local cooldownInfo = RmNegotiationManager.getCooldownInfo(farmlandId, playerFarmId)
         if cooldownInfo ~= nil and cooldownInfo.remaining > 0 then
@@ -335,9 +348,10 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
         -- Label overrides (PF doesn't touch labels, so this only runs here)
         if contextBox.rmFmValueLabel ~= nil and farmland ~= nil then
             local isOwned = farmland.farmId == g_currentMission:getFarmId()
-            if isOwned and RmFmSettings.isNegotiationEnabled() then
+            if isOwned and RmFmSettings.isNegotiateSellEnabled() then
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_marketValue") .. ":")
-            elseif not isOwned and RmFmSettings.isNegotiationEnabled() then
+            elseif not isOwned and RmFmSettings.isNegotiateBuyEnabled()
+                   and RmFmAvailability.isForSale(farmland.id) then
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
             else
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("ui_sellValue") .. ":")
@@ -853,7 +867,11 @@ function RmFarmlandMarket.registerXmlSchema()
     -- Settings
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#availabilityPreset", "Availability preset state")
     schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#customPricePerHa", "Custom base price per hectare (0 = map default)")
-    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiationEnabled", "Negotiation enabled state")
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiateBuy", "Negotiate buy state")
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiateSell", "Negotiate sell state")
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#unlistedOffers", "Unlisted offers state")
+    -- Legacy: migration from pre-0.6 saves (read-only, never written by new saves)
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.settings#negotiationEnabled", "Legacy negotiation toggle (migration)")
 
     -- Availability entries
     local entryPath = "rmFarmlandMarket.availability.farmland(?)"
