@@ -302,6 +302,15 @@ end
 ---@param youLabel string
 ---@param buyerLabel string
 function RmNegotiationDialog:buildSellHistory(snapshot, youLabel, buyerLabel)
+    -- FM-19: Show NPC opening offer before any player asks (visible from session start)
+    if #snapshot.offers == 0 and snapshot.lastCounter ~= nil then
+        table.insert(self.historyRows, {
+            round = "R1",
+            party = buyerLabel,
+            amount = self:formatPrice(snapshot.lastCounter),
+        })
+    end
+
     local lastBuyerPrice = nil
     for i, entry in ipairs(snapshot.offers) do
         local rLabel = "R" .. entry.round
