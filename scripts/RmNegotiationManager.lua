@@ -884,6 +884,15 @@ function RmNegotiationManager.ensureListedProfiles()
     end
 end
 
+--- Invalidate all cached seller profiles and regenerate from current market values.
+--- Called when price per hectare changes to ensure listing prices reflect new base prices.
+function RmNegotiationManager.invalidateSellerProfiles()
+    if g_server == nil then return end
+    RmNegotiationManager.sellerProfiles = {}
+    RmNegotiationManager.ensureListedProfiles()
+    Log:info("NEGOTIATION: Invalidated and regenerated seller profiles (price change)")
+end
+
 --- Get the listing price for a farmland (works on both server and client).
 --- Server: reads from cached seller profile.
 --- Client: reads from synced availability entry.

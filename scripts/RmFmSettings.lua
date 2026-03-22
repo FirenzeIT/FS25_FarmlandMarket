@@ -118,6 +118,7 @@ function RmFmSettings.setCustomPricePerHa(price)
     end
     RmFmSettings.customPricePerHa = price
     RmFarmlandMarket.updateAllFarmlandPrices()
+    RmNegotiationManager.invalidateSellerProfiles()
     if price > 0 then
         Log:info("Custom base price set to %d/ha, updating all farmland prices", price)
     else
@@ -194,6 +195,8 @@ local function sendSettingsChangeRequest(availabilityPresetState, customPricePer
         if settingsPage ~= nil then
             updateGameSettings(settingsPage)
         end
+        -- Refresh map display so context box shows updated prices
+        Timer.createOneshot(0, RmFarmlandMarket.refreshMapDisplay)
     elseif g_client ~= nil then
         -- Remote client: send to server for validation
         g_client:getServerConnection():sendEvent(
