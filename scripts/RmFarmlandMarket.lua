@@ -11,12 +11,33 @@ RmFarmlandMarket.modName = g_currentModName
 
 -- Module constants
 RmFarmlandMarket.DEFAULT_PRICE_PER_HA = nil -- nil = use game default
-RmFarmlandMarket.COLOR_FOR_SALE = {0.10, 0.22, 0.01, 1}      -- Match available-selected overlay
-RmFarmlandMarket.COLOR_NOT_FOR_SALE = {0.4, 0.05, 0.05, 1}   -- Match unavailable-selected overlay
-RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED = {0.4, 0.05, 0.05}  -- Red highlight for selected unavailable
-RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE = {0.25, 0.04, 0.04}  -- Light red tint for non-selected unavailable
-RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED = {0.10, 0.22, 0.01}  -- Green highlight for selected available
-RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE = {0.06, 0.13, 0.005}  -- Light green tint for non-selected available
+RmFarmlandMarket.isColorBlindMode = false -- updated in onLoadMapFinished
+
+-- Hotspot colors: boolean-keyed [false]=normal, [true]=colorBlind (FS25 pattern)
+RmFarmlandMarket.COLOR_FOR_SALE = {}
+RmFarmlandMarket.COLOR_FOR_SALE[false] = {0.10, 0.22, 0.01, 1}           -- green
+RmFarmlandMarket.COLOR_FOR_SALE[true]  = {0.0423, 0.2502, 0.8069, 1}     -- blue (CB)
+
+RmFarmlandMarket.COLOR_NOT_FOR_SALE = {}
+RmFarmlandMarket.COLOR_NOT_FOR_SALE[false] = {0.4, 0.05, 0.05, 1}        -- red
+RmFarmlandMarket.COLOR_NOT_FOR_SALE[true]  = {0.9473, 0.5271, 0.0, 1}    -- orange (CB)
+
+-- Overlay colors: boolean-keyed [false]=normal, [true]=colorBlind
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED = {}
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED[false] = {0.10, 0.22, 0.01}      -- green
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED[true]  = {0.0423, 0.2502, 0.8069} -- blue (CB)
+
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE = {}
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE[false] = {0.06, 0.13, 0.005}    -- dim green
+RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE[true]  = {0.03, 0.15, 0.49}     -- dim blue (CB)
+
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED = {}
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED[false] = {0.4, 0.05, 0.05}     -- red
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED[true]  = {0.9473, 0.5271, 0.0}  -- orange (CB)
+
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE = {}
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE[false] = {0.25, 0.04, 0.04}   -- dim red
+RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE[true]  = {0.58, 0.32, 0.0}    -- dim orange (CB)
 
 -- Cached pricing details per farmland id (populated during updatePrice)
 RmFarmlandMarket.priceData = {}
@@ -387,12 +408,12 @@ InGameMenuMapFrame.populateCellForItemInSection = Utils.appendedFunction(
             -- "Unowned" -> "For sale" (green)
             cell:getAttribute("name"):setText(g_i18n:getText("rm_fm_forSale"))
             self:assignItemColors(cell:getAttribute("iconBg"),
-                { RmFarmlandMarket.COLOR_FOR_SALE })
+                { RmFarmlandMarket.COLOR_FOR_SALE[RmFarmlandMarket.isColorBlindMode] })
         elseif index == 2 then
             -- "Currently Selected" -> "Not for sale" (red)
             cell:getAttribute("name"):setText(g_i18n:getText("rm_fm_notForSale"))
             self:assignItemColors(cell:getAttribute("iconBg"),
-                { RmFarmlandMarket.COLOR_NOT_FOR_SALE })
+                { RmFarmlandMarket.COLOR_NOT_FOR_SALE[RmFarmlandMarket.isColorBlindMode] })
         end
     end
 )
@@ -426,7 +447,7 @@ FarmlandHotspot.updateColors = Utils.appendedFunction(FarmlandHotspot.updateColo
 
     -- Apply red tint if not for sale
     if not RmFmAvailability.isForSale(farmland.id) then
-        local color = RmFarmlandMarket.COLOR_NOT_FOR_SALE
+        local color = RmFarmlandMarket.COLOR_NOT_FOR_SALE[RmFarmlandMarket.isColorBlindMode]
         self:setColor(color[1], color[2], color[3])
         self.colorDisabled[1] = color[1]
         self.colorDisabled[2] = color[2]
@@ -467,18 +488,19 @@ local function applyAvailabilityOverlayColors(self, selectedFarmland)
     local numChannels = getBitVectorMapNumChannels(map)
     local selectedId = selectedFarmland ~= nil and selectedFarmland.id or nil
 
+    local isBlind = RmFarmlandMarket.isColorBlindMode
     for k, farmland in pairs(self.farmlandManager:getFarmlands()) do
         if RmFmAvailability.isEligibleForAvailability(farmland) then
             local isSelected = farmland.id == selectedId
             local color
             if RmFmAvailability.isForSale(farmland.id) then
                 color = isSelected
-                    and RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED
-                    or RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE
+                    and RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED[isBlind]
+                    or RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE[isBlind]
             else
                 color = isSelected
-                    and RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED
-                    or RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE
+                    and RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED[isBlind]
+                    or RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE[isBlind]
             end
             setDensityMapVisualizationOverlayStateColor(
                 overlay, map, 0, 0, 0, numChannels, k,
@@ -498,6 +520,15 @@ MapOverlayGenerator.buildSingleFarmlandsMapOverlay = Utils.appendedFunction(
     MapOverlayGenerator.buildSingleFarmlandsMapOverlay,
     applyAvailabilityOverlayColors
 )
+
+--- Handle color blind mode setting change (subscribed via MessageCenter).
+--- MessageCenter passes target as first arg, so read setting directly instead.
+function RmFarmlandMarket.onColorBlindModeChanged()
+    RmFarmlandMarket.isColorBlindMode =
+        g_gameSettings:getValue(GameSettings.SETTING.USE_COLORBLIND_MODE) == true
+    Log:debug("Color blind mode changed: %s", tostring(RmFarmlandMarket.isColorBlindMode))
+    RmFarmlandMarket.updateAllHotspotColors()
+end
 
 --- Update all farmland hotspot colors (called after availability changes)
 function RmFarmlandMarket.updateAllHotspotColors()
@@ -998,6 +1029,16 @@ local function onLoadMapFinished()
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmFarmlandMarket.onDayChanged, RmFarmlandMarket)
     Log:debug("Subscribed to DAY_CHANGED message")
 
+    -- Read color blind mode setting and subscribe to live changes
+    RmFarmlandMarket.isColorBlindMode =
+        Utils.getNoNil(g_gameSettings:getValue(GameSettings.SETTING.USE_COLORBLIND_MODE), false) == true
+    g_messageCenter:subscribe(
+        MessageType.SETTING_CHANGED[GameSettings.SETTING.USE_COLORBLIND_MODE],
+        RmFarmlandMarket.onColorBlindModeChanged,
+        RmFarmlandMarket
+    )
+    Log:debug("Color blind mode: %s", tostring(RmFarmlandMarket.isColorBlindMode))
+
     -- Precision Farming compatibility: PF's AdditionalFieldBuyInfo:updateContextBox()
     -- asynchronously overwrites farmlandValue after our showContextBox append runs.
     -- Re-apply ALL value overrides (listing price, not-for-sale, cooldown) via shared helper.
@@ -1060,6 +1101,13 @@ local function onDeleteMap()
 
     -- Unsubscribe from day change events
     g_messageCenter:unsubscribe(MessageType.DAY_CHANGED, RmFarmlandMarket)
+    g_messageCenter:unsubscribe(
+        MessageType.SETTING_CHANGED[GameSettings.SETTING.USE_COLORBLIND_MODE],
+        RmFarmlandMarket
+    )
+
+    -- Reset color blind mode state
+    RmFarmlandMarket.isColorBlindMode = false
 
     -- Clean up availability state
     RmFmAvailability.reset()
