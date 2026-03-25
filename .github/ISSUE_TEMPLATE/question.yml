@@ -1,0 +1,25 @@
+name: Question
+description: Ask a question about the mod, its features, or how something works
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about Farmland Market? Ask away! You may also find your answer in the [README](https://github.com/rittermod/FS25_FarmlandMarket#readme).
+
+  - type: checkboxes
+    id: docs-checked
+    attributes:
+      label: Documentation
+      description: "Have you checked the [README](https://github.com/rittermod/FS25_FarmlandMarket#readme)?"
+      options:
+        - label: I have checked the documentation and didn't find the answer
+          required: false
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know? Include any relevant details like mod version, game mode, difficulty preset, screenshots, or log excerpts.
+    validations:
+      required: true
