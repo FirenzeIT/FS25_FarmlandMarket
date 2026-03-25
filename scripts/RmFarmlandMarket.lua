@@ -279,7 +279,13 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
         -- SELL button label
         local sellAction = self.contextActions[actions.SELL]
         if canSell and sellAction.isActive and RmFmSettings.isNegotiateSellEnabled() then
-            sellAction.title = g_i18n:getText("rm_fm_btn_negotiateSale")
+            local hotspot = self.currentHotspot
+            if hotspot ~= nil and hotspot.getFarmland ~= nil
+               and hotspot:getFarmland() ~= nil then
+                sellAction.title = g_i18n:getText("rm_fm_btn_negotiateSale")
+            else
+                sellAction.title = nil
+            end
         else
             sellAction.title = nil
         end
