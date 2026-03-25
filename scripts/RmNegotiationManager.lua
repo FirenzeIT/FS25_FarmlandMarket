@@ -39,7 +39,7 @@ RmNegotiationManager.COOLDOWNS = {
     unlisted_rejected    = { easy = 2, normal = 3, hard = 3, harder = 4, realistic = 5 },
     unlisted_failed      = { easy = 1, normal = 2, hard = 2, harder = 3, realistic = 4 },
     unlisted_walkaway    = { easy = 1, normal = 2, hard = 2, harder = 3, realistic = 4 },
-    selling_npc_walked   = { easy = 1, normal = 1, hard = 1, harder = 1, realistic = 1 },
+    selling_npc_walked   = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
     selling_walkaway     = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
 }
 

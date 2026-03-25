@@ -363,13 +363,15 @@ end
 ---@return string
 function RmNegotiationUI.getErrorMessage(errorReason)
     if errorReason == "cooldown" then
+        local isSell = RmNegotiationUI.currentMode == RmNegotiationEngine.MODE_SELL
         local info = RmNegotiationManager.getCooldownInfo(
             RmNegotiationUI.currentFarmlandId, RmNegotiationUI.currentFarmId)
         if info then
-            return string.format(g_i18n:getText("rm_fm_neg_cooldownDisplay"),
-                info.remaining)
+            local key = isSell and "rm_fm_neg_cooldownSellDisplay" or "rm_fm_neg_cooldownDisplay"
+            return string.format(g_i18n:getText(key), info.remaining)
         end
-        return g_i18n:getText("rm_fm_neg_cooldown")
+        local key = isSell and "rm_fm_neg_cooldownSell" or "rm_fm_neg_cooldown"
+        return g_i18n:getText(key)
     elseif errorReason == "locked" then
         return g_i18n:getText("rm_fm_neg_locked")
     elseif errorReason == "insufficient_funds" then
