@@ -309,7 +309,7 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     if valueEl == nil then return end
 
     -- Listing price override (unowned + listed + negotiate buy on)
-    -- Unlisted fields never show a listing price — the buyer makes a blind offer
+    -- Unlisted fields never show a listing price - the buyer makes a blind offer
     local isOwned = farmland.farmId == g_currentMission:getFarmId()
     if not isOwned and RmFmSettings.isNegotiateBuyEnabled()
        and RmFmAvailability.isForSale(farmlandId) then

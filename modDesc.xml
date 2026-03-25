@@ -28,8 +28,10 @@ Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 Changelog:
 0.6.0.0-dev:
 - Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
-- Added save migration from old single toggle — existing saves automatically map to all three settings
-- Improved negotiation fairness — players must increase buy offers and decrease sell asks each round
+- Added save migration from old single toggle - existing saves automatically map to all three settings
+- Added color blind mode support - farmland overlays and legend switch to blue/orange when enabled in game settings
+- Improved negotiation fairness - players must increase buy offers and decrease sell asks each round
+- Improved cooldown message in sell mode - no longer says "the owner is not interested" when the player is the owner
 - Fixed seller counter-offer going below their minimum acceptable price during negotiation
 - Fixed NPC buyer offer exceeding their maximum willingness to pay during negotiation
 - Fixed seller's first counter sometimes equaling their opening demand with high stubbornness
@@ -37,6 +39,8 @@ Changelog:
 - Fixed negotiation dialog closing when submitting a non-monotonic offer/ask
 - Fixed negotiation defaulting to Off on fresh saves instead of On
 - Fixed listing prices and market values not updating when price per hectare is changed in settings
+- Fixed sell cooldown blocking owner from re-listing after NPC buyer walks away
+- Fixed "Negotiate Sale" button appearing on placeables and buildings instead of only on farmland
 
 0.5.0.0 (Beta - 2026-03-21):
 - Changed base price setting from multiplier presets to direct price per hectare input

@@ -522,7 +522,7 @@ local function doSubmitOffer(farmId, amount)
             local step = math.max(math.floor(gap * 0.01), 1)
             counter = math.max(session.lastCounter - step, amount + 1)
         end
-        -- FM-16: clamp counter at seller reservation floor
+        -- Clamp counter at seller reservation floor
         counter = math.max(counter, session.profile.reservation)
         session.state = "proposal"
         session.pendingProposal = {
@@ -540,7 +540,7 @@ local function doSubmitOffer(farmId, amount)
             local step = math.max(math.floor(gap * 0.01), 1)
             counter = math.max(session.lastCounter - step, amount + 1)
         end
-        -- FM-16: clamp counter at seller reservation floor
+        -- Clamp counter at seller reservation floor
         counter = math.max(counter, session.profile.reservation)
         session.offers[lastOfferIdx].counter = counter
         session.lastCounter = counter
@@ -621,7 +621,7 @@ local function doSubmitAsk(farmId, amount)
             local step = math.max(math.floor(gap * 0.01), 1)
             npcOffer = math.min(session.lastCounter + step, amount - 1)
         end
-        -- FM-17: clamp NPC offer at buyer reservation ceiling
+        -- Clamp NPC offer at buyer reservation ceiling
         npcOffer = math.min(npcOffer, session.profile.npcReservation)
         session.offers[lastOfferIdx].npcResponse = npcOffer
         session.state = "proposal"
@@ -639,7 +639,7 @@ local function doSubmitAsk(farmId, amount)
             local step = math.max(math.floor(gap * 0.01), 1)
             npcOffer = math.min(session.lastCounter + step, amount - 1)
         end
-        -- FM-17: clamp NPC offer at buyer reservation ceiling
+        -- Clamp NPC offer at buyer reservation ceiling
         npcOffer = math.min(npcOffer, session.profile.npcReservation)
         session.offers[lastOfferIdx].npcResponse = npcOffer
         session.lastCounter = npcOffer
