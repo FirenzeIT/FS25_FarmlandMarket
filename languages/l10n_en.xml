@@ -93,5 +93,10 @@
         <text name="rm_fm_neg_dlg_waiting" text="Waiting for response..."/>
         <text name="rm_fm_neg_counterAsk" text="Counter-ask"/>
         <text name="rm_fm_neg_close" text="Close"/>
+
+        <!-- Watchlist -->
+        <text name="rm_fm_btn_watchlist" text="Watchlist"/>
+        <text name="rm_fm_watchlist_title" text="Watchlist"/>
+        <text name="rm_fm_watchlist_back" text="Back"/>
     </texts>
 </l10n>

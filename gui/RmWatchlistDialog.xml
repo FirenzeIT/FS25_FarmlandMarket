@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<GUI onOpen="onOpen" onClose="onClose">
+    <GuiElement profile="newLayer"/>
+    <Bitmap profile="dialogFullscreenBg" id="dialogBg"/>
+    <GuiElement profile="fs25_dialogBg" id="dialogElement" size="700px 450px">
+        <ThreePartBitmap profile="fs25_dialogBgMiddle"/>
+        <ThreePartBitmap profile="fs25_dialogBgTop"/>
+        <ThreePartBitmap profile="fs25_dialogBgBottom"/>
+        <GuiElement profile="fs25_dialogContentContainer">
+
+            <!-- Title -->
+            <Text profile="dialogTitle" text="$l10n_rm_fm_watchlist_title" id="dialogTitleElement" position="0px -30px"/>
+
+        </GuiElement>
+
+        <!-- Footer bar: Back -->
+        <BoxLayout profile="fs25_dialogButtonBox" id="footerButtonBox" size="600px 60px">
+            <Button profile="buttonBack" text="$l10n_rm_fm_watchlist_back" onClick="onClickBack"/>
+        </BoxLayout>
+    </GuiElement>
+</GUI>

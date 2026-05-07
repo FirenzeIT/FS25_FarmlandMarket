@@ -1024,6 +1024,7 @@ local function onLoadMapFinished()
 
     -- F11: Register negotiation dialog GUI (before console commands per tech-spec)
     RmNegotiationDialog.register()
+    RmWatchlistDialog.register()
 
     -- Register console commands
     addConsoleCommand("fmList", "List all farmlands with prices", "consoleFmList", RmFarmlandMarket)

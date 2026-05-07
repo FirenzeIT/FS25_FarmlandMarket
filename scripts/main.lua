@@ -39,13 +39,15 @@ source(modDirectory .. "scripts/events/RmNegotiationResultEvent.lua")
 -- CORE
 -- =============================================================================
 
-source(modDirectory .. "scripts/RmFmAvailability.lua") -- After events (depends on RmAvailabilitySyncEvent)
-source(modDirectory .. "scripts/RmNegotiationEngine.lua") -- Stateless negotiation algorithm
-source(modDirectory .. "scripts/RmNegotiationManager.lua") -- Session state machine (wraps engine)
+source(modDirectory .. "scripts/RmFmAvailability.lua")        -- After events (depends on RmAvailabilitySyncEvent)
+source(modDirectory .. "scripts/RmNegotiationEngine.lua")     -- Stateless negotiation algorithm
+source(modDirectory .. "scripts/RmNegotiationManager.lua")    -- Session state machine (wraps engine)
 source(modDirectory .. "scripts/gui/RmNegotiationDialog.lua") -- Custom negotiation dialog
-source(modDirectory .. "scripts/RmNegotiationUI.lua")  -- UI controller (wraps manager for dialogs)
-source(modDirectory .. "scripts/RmFmSettings.lua")     -- After events and availability
-source(modDirectory .. "scripts/RmFarmlandMarket.lua") -- Main module (orchestrator)
+source(modDirectory .. "scripts/gui/RmWatchlistDialog.lua")   -- Skeleton watchlist dialog
+source(modDirectory .. "scripts/RmNegotiationUI.lua")         -- UI controller (wraps manager for dialogs)
+source(modDirectory .. "scripts/RmWatchlistUI.lua")           -- Watchlist map-frame button + dialog hook
+source(modDirectory .. "scripts/RmFmSettings.lua")            -- After events and availability
+source(modDirectory .. "scripts/RmFarmlandMarket.lua")        -- Main module (orchestrator)
 
 -- =============================================================================
 -- TESTING (conditional - delete tests/ folder for production)
