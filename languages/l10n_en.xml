@@ -98,5 +98,9 @@
         <text name="rm_fm_btn_watchlist" text="Watchlist"/>
         <text name="rm_fm_watchlist_title" text="Watchlist"/>
         <text name="rm_fm_watchlist_back" text="Back"/>
+        <text name="rm_fm_farmland_label" text="Farmland"/>
+        <text name="rm_fm_watchlist_empty" text="Your watchlist is empty. Select a farmland on the map and use Add to watchlist."/>
+        <text name="rm_fm_btn_addToWatchlist" text="Add to watchlist"/>
+        <text name="rm_fm_btn_removeFromWatchlist" text="Remove from watchlist"/>
     </texts>
 </l10n>

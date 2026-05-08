@@ -22,6 +22,17 @@ RmFarmlandMarket.COLOR_NOT_FOR_SALE = {}
 RmFarmlandMarket.COLOR_NOT_FOR_SALE[false] = {0.4, 0.05, 0.05, 1}        -- red
 RmFarmlandMarket.COLOR_NOT_FOR_SALE[true]  = {0.9473, 0.5271, 0.0, 1}    -- orange (CB)
 
+-- Watchlist row text colors (used by RmWatchlistDialog.populateCellForItemInSection).
+-- Sibling tables to the hotspot palette above; values tuned for body text on
+-- the dark dialog background, not for the bright map markers.
+RmFarmlandMarket.COLOR_WATCHLIST_LISTED_PRICE = {}
+RmFarmlandMarket.COLOR_WATCHLIST_LISTED_PRICE[false] = {0.49, 0.93, 0.0, 1}   -- bright green
+RmFarmlandMarket.COLOR_WATCHLIST_LISTED_PRICE[true]  = {0.40, 0.70, 1.00, 1}  -- light blue (CB)
+
+RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE = {}
+RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE[false] = {0.7, 0.7, 0.7, 1}     -- light grey
+RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE[true]  = {0.95, 0.60, 0.20, 1}  -- light orange (CB)
+
 -- Overlay colors: boolean-keyed [false]=normal, [true]=colorBlind
 RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED = {}
 RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED[false] = {0.10, 0.22, 0.01}      -- green

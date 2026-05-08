@@ -233,6 +233,265 @@ local function onClickMapOverviewSelectorHook(self, state)
 end
 
 -- ============================================================================
+-- WATCHLIST STATE (in-memory, per-session)
+--
+-- Curated set of farmlandIds the local player is watching. Mutated via the
+-- map action-menu toggle button; read by the dialog's filter and by the
+-- _recomputeAction helper that sets the button's label.
+--
+-- Per-farm scope is logical (see Design Notes in the spec); the in-memory
+-- shape stays single-level because the client only sees its own farm's
+-- perspective. Persistence and the [farmId] save-key arrive in a future spec.
+-- ============================================================================
+
+RmWatchlistUI.watched = {}
+
+--- Check whether a farmland is on the player's watchlist.
+---@param farmlandId number
+---@return boolean
+function RmWatchlistUI.isWatched(farmlandId)
+    return RmWatchlistUI.watched[farmlandId] == true
+end
+
+--- Add a farmland to the watchlist. Idempotent.
+---@param farmlandId number
+---@return boolean wasAdded true if newly added; false if already present
+function RmWatchlistUI.add(farmlandId)
+    if RmWatchlistUI.watched[farmlandId] == true then
+        return false
+    end
+    RmWatchlistUI.watched[farmlandId] = true
+    -- %s + tostring is defensive: production callers pass numeric ids, but a
+    -- bad caller passing a string id would crash a %d formatter.
+    Log:debug("RmWatchlistUI.add: farmlandId=%s added", tostring(farmlandId))
+    return true
+end
+
+--- Remove a farmland from the watchlist. Idempotent.
+---@param farmlandId number
+---@return boolean wasRemoved true if was present and removed; false otherwise
+function RmWatchlistUI.remove(farmlandId)
+    if RmWatchlistUI.watched[farmlandId] ~= true then
+        return false
+    end
+    RmWatchlistUI.watched[farmlandId] = nil
+    Log:debug("RmWatchlistUI.remove: farmlandId=%s removed", tostring(farmlandId))
+    return true
+end
+
+--- Flip a farmland's watchlist membership.
+---@param farmlandId number
+---@return boolean isNowWatched the new state
+function RmWatchlistUI.toggle(farmlandId)
+    if RmWatchlistUI.isWatched(farmlandId) then
+        RmWatchlistUI.remove(farmlandId)
+        return false
+    end
+    RmWatchlistUI.add(farmlandId)
+    return true
+end
+
+--- Drop every entry. Called on map unload via the BaseMission.delete hook.
+--- Mutates the table in place (rather than re-binding it) so any external
+--- reference holders see the cleared state - matches the test helper's
+--- contract and keeps add/remove/clear consistent. Always emits the DEBUG
+--- count line so the lifecycle hook stays diagnosable even on no-op session.
+function RmWatchlistUI.clear()
+    local count = 0
+    for k in pairs(RmWatchlistUI.watched) do
+        RmWatchlistUI.watched[k] = nil
+        count = count + 1
+    end
+    Log:debug("RmWatchlistUI.clear: cleared %d entries", count)
+end
+
+--- Drop watched ids whose farmland is missing from the input table or no
+--- longer passes the eligibility helper. Prevents stale residue when a
+--- watched farmland transitions to owned (e.g. the player buys it).
+---@param farmlandsTable table map of farmlandId -> Farmland (e.g. g_farmlandManager:getFarmlands())
+---@return number prunedCount how many entries were removed
+function RmWatchlistUI.pruneStale(farmlandsTable)
+    if farmlandsTable == nil then
+        return 0
+    end
+    local pruned = 0
+    local toRemove = {}
+    for farmlandId in pairs(RmWatchlistUI.watched) do
+        local farmland = farmlandsTable[farmlandId]
+        -- type(...) == "table" guard: custom maps have produced surprising
+        -- non-table scalars before. RmFmAvailability.isEligibleForAvailability
+        -- dereferences farmland.farmId without its own nil-guard, so a non-
+        -- table value would crash this loop and the whole dialog open.
+        if type(farmland) ~= "table"
+            or not RmFmAvailability.isEligibleForAvailability(farmland) then
+            table.insert(toRemove, farmlandId)
+        end
+    end
+    for _, id in ipairs(toRemove) do
+        RmWatchlistUI.watched[id] = nil
+        pruned = pruned + 1
+    end
+    if pruned > 0 then
+        Log:debug("RmWatchlistUI.pruneStale: pruned %d stale entries", pruned)
+    end
+    return pruned
+end
+
+-- ============================================================================
+-- ACTION-MENU TOGGLE (Add to watchlist / Remove from watchlist)
+--
+-- Registration: contextActions is iterated with ipairs, so only contiguous
+-- integer keys render. Sparse / high-integer keys do not render (verified
+-- empirically). We append via table.insert (Lua picks the next integer
+-- automatically), then capture the resolved index on the live frame instance
+-- (self.rmFmWatchlistActionKey) so both the click handler and _recomputeAction
+-- can look the action back up.
+-- ============================================================================
+
+--- Resolve the farmland the player currently has selected on the map.
+--- Returns nil on any guard miss (no hotspot, hotspot is not a farmland,
+--- or the farmland resolves to a non-table value).
+---@param frame table InGameMenuMapFrame instance
+---@return table|nil farmland the resolved Farmland or nil
+local function getCurrentFarmland(frame)
+    local hotspot = frame.currentHotspot
+    if hotspot == nil or hotspot.getFarmland == nil then
+        return nil
+    end
+    local farmland = hotspot:getFarmland()
+    if type(farmland) ~= "table" then
+        return nil
+    end
+    return farmland
+end
+
+--- Single source of truth for the watchlist action's isActive + title.
+--- Called from the setMapInputContext append-hook AND from the click handler
+--- so both paths agree on what the button should look like RIGHT NOW.
+--- Module-attached (not file-local) so tests can exercise it directly.
+---@param frame table InGameMenuMapFrame instance
+---@param farmland table|nil the resolved current farmland (or nil)
+function RmWatchlistUI._recomputeAction(frame, farmland)
+    if frame == nil or frame.contextActions == nil then return end
+    local key = frame.rmFmWatchlistActionKey
+    if key == nil then return end
+    local action = frame.contextActions[key]
+    if action == nil then return end
+
+    local isEligible = type(farmland) == "table"
+        and RmFmAvailability.isEligibleForAvailability(farmland)
+    if not isEligible then
+        action.isActive = false
+        action.title = nil
+        return
+    end
+
+    action.isActive = true
+    if RmWatchlistUI.isWatched(farmland.id) then
+        action.title = g_i18n:getText("rm_fm_btn_removeFromWatchlist")
+    else
+        action.title = g_i18n:getText("rm_fm_btn_addToWatchlist")
+    end
+end
+
+--- Click handler for the watchlist toggle context action. Defends against UI
+--- race / stale callback by re-validating eligibility before mutating state.
+---@param frame table InGameMenuMapFrame instance
+local function onWatchlistToggleClick(frame)
+    Log:trace(">>> onWatchlistToggleClick")
+    -- Dedupe same-physical-click double-fire. Observed: the cell's click
+    -- callback fires twice within ~1ms when the user clicks a row that
+    -- already has focus. Without this guard each user click would toggle
+    -- state twice and net to zero, making the button look unresponsive.
+    -- The 100ms window catches the same-tick repeat but is tight enough
+    -- that deliberate fast clicks (>=100ms apart) still register.
+    local now = g_time or 0
+    if frame.rmFmWatchlistLastClickMs ~= nil
+        and (now - frame.rmFmWatchlistLastClickMs) < 100 then
+        Log:trace("  duplicate click within 100ms (dt=%dms), ignoring",
+            now - frame.rmFmWatchlistLastClickMs)
+        return
+    end
+    frame.rmFmWatchlistLastClickMs = now
+
+    local farmland = getCurrentFarmland(frame)
+    if farmland == nil then
+        Log:trace("  no current farmland, no-op")
+        return
+    end
+    if not RmFmAvailability.isEligibleForAvailability(farmland) then
+        Log:trace("  farmland %s not eligible, no-op", tostring(farmland.id))
+        return
+    end
+    local isNowWatched = RmWatchlistUI.toggle(farmland.id)
+    -- Update the visible label immediately so the player sees the new state
+    -- without waiting for the next setMapInputContext pass.
+    RmWatchlistUI._recomputeAction(frame, farmland)
+    -- Repaint the action panel so the row's text element picks up the
+    -- new action.title. Without this, the data flips but the visible
+    -- cell keeps showing the old label and the player concludes the
+    -- click did nothing. reloadData only re-runs the populator and has
+    -- no other side effects on the panel.
+    if frame.contextButtonListFarmland ~= nil then
+        frame.contextButtonListFarmland:reloadData()
+    end
+    Log:info("WATCHLIST: farmlandId=%s isWatched=%s",
+        tostring(farmland.id), tostring(isNowWatched))
+end
+
+--- onFrameOpen append-hook that registers the watchlist toggle by APPENDING
+--- a new entry to self.contextActions via table.insert (so the resolved
+--- integer key stays contiguous and reachable by ipairs). Idempotent:
+--- re-runs against the same frame instance bail out.
+---@param frame table InGameMenuMapFrame instance
+local function registerWatchlistContextAction(frame)
+    if frame.contextActions == nil then return end
+    -- Re-arm the per-frame-open trace flag on EVERY onFrameOpen, even when
+    -- the action entry already exists. Otherwise reopens of the same frame
+    -- instance silence setMapInputContext TRACE after the first open and
+    -- the spec's "TRACE entry only on first call per frame open" contract
+    -- is violated for every subsequent open.
+    frame.rmFmWatchlistContextTraceArmed = true
+
+    if frame.rmFmWatchlistActionKey ~= nil
+        and frame.contextActions[frame.rmFmWatchlistActionKey] ~= nil then
+        -- Action already registered against this frame instance; nothing to do.
+        return
+    end
+    table.insert(frame.contextActions, {
+        isActive    = false,
+        callback    = onWatchlistToggleClick,
+        text        = nil,
+        title       = nil,
+        inputAction = InputAction.NONE,
+    })
+    frame.rmFmWatchlistActionKey = #frame.contextActions
+    Log:trace("RmWatchlistUI: registered context action key=%d (instance)",
+        frame.rmFmWatchlistActionKey)
+end
+
+--- setMapInputContext append-hook. Runs after the existing FM logic; resolves
+--- the current hotspot's farmland and recomputes the watchlist action's
+--- isActive + title via the single-source-of-truth helper. Emits a one-shot
+--- TRACE per frame open so the steady-state path is diagnosable without
+--- spamming the log on every hotspot change.
+---@param frame table InGameMenuMapFrame instance
+local function setMapInputContextHook(frame)
+    if frame.rmFmWatchlistContextTraceArmed == true then
+        Log:trace(">>> setMapInputContext (watchlist hook, first call this frame open)")
+        frame.rmFmWatchlistContextTraceArmed = false
+    end
+    RmWatchlistUI._recomputeAction(frame, getCurrentFarmland(frame))
+end
+
+--- Named cleanup callback for BaseMission.delete - keeps a stable identity so
+--- Utils.appendedFunction does not create a fresh anonymous closure on each
+--- script reload.
+local function clearWatchlistOnMissionDelete()
+    RmWatchlistUI.clear()
+end
+
+-- ============================================================================
 -- HOOK INSTALLATION
 -- ============================================================================
 
@@ -241,10 +500,26 @@ InGameMenuMapFrame.onFrameOpen = Utils.appendedFunction(
     onFrameOpenHook
 )
 
+InGameMenuMapFrame.onFrameOpen = Utils.appendedFunction(
+    InGameMenuMapFrame.onFrameOpen,
+    registerWatchlistContextAction
+)
+
+InGameMenuMapFrame.setMapInputContext = Utils.appendedFunction(
+    InGameMenuMapFrame.setMapInputContext,
+    setMapInputContextHook
+)
+
 InGameMenuMapFrame.onClickMapOverviewSelector = Utils.appendedFunction(
     InGameMenuMapFrame.onClickMapOverviewSelector,
     onClickMapOverviewSelectorHook
 )
+
+-- Wipe the in-memory watchlist when the mission unloads, so a savegame
+-- switch starts fresh and never leaks farmlandIds across sessions. Uses a
+-- named local closure so re-sourcing the script does not leave duplicate
+-- anonymous functions chained via Utils.appendedFunction.
+BaseMission.delete = Utils.appendedFunction(BaseMission.delete, clearWatchlistOnMissionDelete)
 
 -- Register cloned controls with FocusManager once the GUI is set up.
 -- Without this, cloned elements are not reachable via keyboard/controller

@@ -2,7 +2,7 @@
 <GUI onOpen="onOpen" onClose="onClose">
     <GuiElement profile="newLayer"/>
     <Bitmap profile="dialogFullscreenBg" id="dialogBg"/>
-    <GuiElement profile="fs25_dialogBg" id="dialogElement" size="700px 450px">
+    <GuiElement profile="fs25_dialogBg" id="dialogElement" size="700px 600px">
         <ThreePartBitmap profile="fs25_dialogBgMiddle"/>
         <ThreePartBitmap profile="fs25_dialogBgTop"/>
         <ThreePartBitmap profile="fs25_dialogBgBottom"/>
@@ -11,11 +11,27 @@
             <!-- Title -->
             <Text profile="dialogTitle" text="$l10n_rm_fm_watchlist_title" id="dialogTitleElement" position="0px -30px"/>
 
+            <!-- Empty-state message (toggled by Lua based on entry count) -->
+            <Text profile="fs25_dialogText" text="$l10n_rm_fm_watchlist_empty" id="emptyListText" position="0px -260px" size="600px 40px"/>
+
+            <!-- Watchlist row list -->
+            <SmoothList profile="rmFmWatchlistList" id="watchlistList" position="50px -80px" size="570px 420px" focusInit="onOpen" focusChangeTop="nil" focusChangeBottom="nil" onClick="onListClick" onDoubleClick="onListDoubleClick">
+                <ListItem profile="rmFmWatchlistRow" name="watchlistRowTemplate" size="555px 55px">
+                    <Text profile="rmFmWatchlistName"    position="10px -5px"  size="380px 28px" name="farmlandName"/>
+                    <Text profile="rmFmWatchlistSubtext" position="10px -30px" size="380px 22px" name="farmlandSubtext"/>
+                    <Text profile="rmFmWatchlistPrice"   position="395px 0px"  size="150px 55px" name="priceText"/>
+                </ListItem>
+            </SmoothList>
+
+            <!-- Scrollbar -->
+            <ThreePartBitmap profile="fs25_listSliderBox" position="-30px -17px" size="12px 420px" with="anchorTopRight">
+                <Slider profile="fs25_listSlider" size="6px 412px" dataElementId="watchlistList" id="listSlider"/>
+            </ThreePartBitmap>
         </GuiElement>
 
-        <!-- Footer bar: Back -->
+        <!-- Footer: Back -->
         <BoxLayout profile="fs25_dialogButtonBox" id="footerButtonBox" size="600px 60px">
-            <Button profile="buttonBack" text="$l10n_rm_fm_watchlist_back" onClick="onClickBack"/>
+            <Button profile="buttonBack" text="$l10n_rm_fm_watchlist_back" onClick="onClickBack" id="watchlistBackButton"/>
         </BoxLayout>
     </GuiElement>
 </GUI>
