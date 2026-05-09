@@ -67,21 +67,24 @@ function RmWatchlistToggleEvent:run(connection)
         return
     end
 
-    -- Early-drop branches still must answer the originating client - the
-    -- client already mutated its local cache optimistically and will stay
-    -- diverged forever without a corrective sync. We can't compute a
-    -- canonical subset without farmId, so fall back to an empty sync; the
-    -- client will clear its watched and the next sendInitialClientState
-    -- (on rebind / reconnect) restores the correct state.
+    -- Early-drop branches: server can't resolve the connection's player or
+    -- farmId, so we cannot compute a scoped snapshot. We send an empty
+    -- byFarm payload as a heartbeat. The receiver treats own-farm-absent
+    -- as NO-OP, so this empty payload does NOT clear the client's
+    -- optimistic state. That is acceptable here: if the server can't
+    -- resolve the player, the connection is effectively broken; the
+    -- client's cache will reconcile on next reconnect via
+    -- sendInitialClientState (which ships a properly scoped snapshot
+    -- landing in case (a) or (b)).
     local player = g_currentMission and g_currentMission:getPlayerByConnection(connection) or nil
     if player == nil then
-        Log:warning("RmWatchlistToggleEvent: no player for connection; sending empty corrective sync")
+        Log:warning("RmWatchlistToggleEvent: no player for connection; empty payload sent (no-op corrective)")
         connection:sendEvent(RmWatchlistSyncEvent.new({}))
         return
     end
     local farmId = player.farmId
     if type(farmId) ~= "number" or farmId <= 0 then
-        Log:warning("RmWatchlistToggleEvent: invalid farmId=%s for connection; sending empty corrective sync",
+        Log:warning("RmWatchlistToggleEvent: invalid farmId=%s for connection; empty payload sent (no-op corrective)",
             tostring(farmId))
         connection:sendEvent(RmWatchlistSyncEvent.new({}))
         return

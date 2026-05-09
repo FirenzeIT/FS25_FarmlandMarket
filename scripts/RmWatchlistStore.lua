@@ -110,10 +110,10 @@ function RmWatchlistStore.applyToggle(farmId, farmlandId, add)
         RmWatchlistStore.byFarm[farmId] = RmWatchlistStore.byFarm[farmId] or {}
         RmWatchlistStore.byFarm[farmId][farmlandId] = true
         Log:debug("applyToggle add: farm=%d farmland=%d", farmId, farmlandId)
-        -- Live propagation: every connection on this farm gets the canonical
-        -- subset so same-farm players see each other's adds without a
-        -- reconnect. See broadcastToFarm for the host-self-update path.
-        RmWatchlistStore.broadcastToFarm(farmId)
+        -- Live propagation: full-state broadcast to all clients; host's local
+        -- UI cache is refreshed inside broadcastFullState (broadcastEvent's
+        -- default sendLocal=false skips the host's own loopback).
+        RmWatchlistStore.broadcastFullState(farmId)
         return true, nil
     end
 
@@ -132,8 +132,13 @@ function RmWatchlistStore.applyToggle(farmId, farmlandId, add)
         end
     end
     Log:debug("applyToggle remove: farm=%d farmland=%d", farmId, farmlandId)
-    -- Same-farm clients need the new (smaller) subset live, not at reconnect.
-    RmWatchlistStore.broadcastToFarm(farmId)
+    -- Live propagation: full-state broadcast covers same-farm clients and
+    -- refreshes the host's UI cache via the local replaceFromSync inside
+    -- broadcastFullState. Pass farmId so the touched-farm hint force-includes
+    -- it in the snapshot as {} when the remove just collapsed byFarm[farmId]
+    -- to nil -- otherwise same-farm clients would land in case (c) "absent
+    -- = no-op" and miss the clear.
+    RmWatchlistStore.broadcastFullState(farmId)
     return true, nil
 end
 
@@ -289,12 +294,55 @@ function RmWatchlistStore.saveToXMLFile(xmlFile)
 end
 
 -- ============================================================================
+-- SNAPSHOT BUILDER
+-- ============================================================================
+
+--- Build a {[farmId] = number[]} snapshot suitable for shipping in a
+--- RmWatchlistSyncEvent. Each per-farm value is the dense ascending-sorted
+--- array that pruneStaleSubset produces -- callers (and stream writers,
+--- and the receiver's replaceFromSync) consume the array directly. No set
+--- tables anywhere on this path: replaceFromSync uses ipairs and would
+--- silently clear if handed a set.
+---
+--- When `scopeFarmId` is provided, the returned snapshot contains only that
+--- farm (used by sendInitialClientState and sendCorrectiveSync, which already
+--- know the recipient via the connection). When nil, every farm currently in
+--- byFarm is included (used by the toggle-broadcast path). Pruning runs on
+--- every farm in the all-farms path -- intentional: pruning is idempotent
+--- and correctness-preserving, and the cost is bounded by expected scale.
+---@param scopeFarmId number|nil
+---@return table snapshot {[farmId] = number[]}
+function RmWatchlistStore._buildPrunedSnapshot(scopeFarmId)
+    local snapshot = {}
+    if scopeFarmId ~= nil then
+        if type(scopeFarmId) == "number" and scopeFarmId > 0 then
+            snapshot[scopeFarmId] = RmWatchlistStore.pruneStaleSubset(scopeFarmId)
+        end
+        return snapshot
+    end
+    -- Snapshot keys first, then iterate. pruneStaleSubset can collapse
+    -- byFarm[farmId] to nil mid-loop (when all entries were stale); Lua 5.1
+    -- permits clearing existing fields during pairs() traversal, but a
+    -- stable key list makes the intent obvious and survives any future
+    -- pruneStaleSubset change that adds keys (which IS undefined under
+    -- pairs traversal).
+    local farmIds = {}
+    for farmId in pairs(RmWatchlistStore.byFarm) do
+        table.insert(farmIds, farmId)
+    end
+    for _, farmId in ipairs(farmIds) do
+        snapshot[farmId] = RmWatchlistStore.pruneStaleSubset(farmId)
+    end
+    return snapshot
+end
+
+-- ============================================================================
 -- LATE-JOIN SYNC
 -- ============================================================================
 
---- Send the joining client THEIR farm's subset. Runs server-side stale prune
---- before sending so late joiners never receive entries that other clients
---- would already have pruned locally. Server only.
+--- Send the joining client a single-farm scoped snapshot. The server resolves
+--- the recipient's farmId from the connection (no client-side race). Server
+--- only.
 ---@param connection table Connection object for the joining client
 function RmWatchlistStore.sendInitialClientState(connection)
     Log:trace(">>> RmWatchlistStore.sendInitialClientState()")
@@ -303,9 +351,9 @@ function RmWatchlistStore.sendInitialClientState(connection)
     end
 
     -- Nil-guard: if the player object is not bound to this connection yet,
-    -- send an empty subset rather than throwing or sending the wrong farm's
-    -- list. Empty syncs are harmless - the client clears its local view and
-    -- the next dialog open will reflect that.
+    -- send an empty snapshot rather than throwing. Empty snapshots are
+    -- harmless -- the client clears its local view and the next dialog open
+    -- (or next broadcast) will refresh it.
     local player = g_currentMission and g_currentMission:getPlayerByConnection(connection) or nil
     if player == nil then
         Log:warning("sendInitialClientState: no player for connection, sending empty sync")
@@ -320,59 +368,68 @@ function RmWatchlistStore.sendInitialClientState(connection)
         return
     end
 
-    local ids = RmWatchlistStore.pruneStaleSubset(farmId)
-    Log:debug("sendInitialClientState: sending %d entries to farm=%d", #ids, farmId)
-    connection:sendEvent(RmWatchlistSyncEvent.new(ids))
+    local snapshot = RmWatchlistStore._buildPrunedSnapshot(farmId)
+    Log:debug("sendInitialClientState: sending %d entries to farm=%d",
+        #(snapshot[farmId] or {}), farmId)
+    connection:sendEvent(RmWatchlistSyncEvent.new(snapshot))
     Log:trace("<<< RmWatchlistStore.sendInitialClientState()")
 end
 
 --- Send a corrective sync to a single connection - used by the toggle event
---- handler when it rejects a client request. The client receives the canonical
---- subset and replaces its local cache, converging within one round-trip.
+--- handler when it rejects a client request. Server scopes the snapshot to
+--- the rejected connection's farm so the client's optimistic mutation is
+--- replaced with canonical state in one round-trip.
 ---@param connection table
 ---@param farmId number
 function RmWatchlistStore.sendCorrectiveSync(connection, farmId)
     if g_server == nil then return end
     if type(farmId) ~= "number" or farmId <= 0 then return end
-    local ids = RmWatchlistStore.pruneStaleSubset(farmId)
-    Log:debug("sendCorrectiveSync: %d entries to farm=%d", #ids, farmId)
-    connection:sendEvent(RmWatchlistSyncEvent.new(ids))
+    local snapshot = RmWatchlistStore._buildPrunedSnapshot(farmId)
+    Log:debug("sendCorrectiveSync: %d entries to farm=%d",
+        #(snapshot[farmId] or {}), farmId)
+    connection:sendEvent(RmWatchlistSyncEvent.new(snapshot))
 end
 
---- Send the canonical per-farm subset to EVERY connection currently bound to
---- that farm, AND update the host's local cache if the host is on the same
---- farm. Called after a successful applyToggle so all same-farm players see
---- the change live (not just at next reconnect).
+--- Broadcast the full-state snapshot to all clients and refresh the host's
+--- local UI cache. Called after a successful applyToggle.
 ---
---- The host doesn't appear as a remote connection in userManager:getUsers,
---- so its local RmWatchlistUI.watched needs an explicit refresh - otherwise
---- a remote client toggling on the host's farm would update only the remote
---- side and the host's dialog would stay stale until reload.
----@param farmId number
-function RmWatchlistStore.broadcastToFarm(farmId)
+--- broadcastEvent defaults to sendLocal=false, so run() is not fired locally
+--- on the server -- the host's loopback connection never sees this event,
+--- eliminating the "RmWatchlistSyncEvent rejected" log line that the
+--- per-conn iteration used to produce. The host's UI cache is therefore
+--- refreshed via an explicit local replaceFromSync call, not via the
+--- network.
+---
+--- `touchedFarmId` is the farm whose entries just changed. If the change was
+--- a remove that collapsed byFarm[touchedFarmId] to nil, the snapshot would
+--- otherwise omit that farm and same-farm clients would treat the broadcast
+--- as "not addressed to me" (per the receiver's three-case dispatch). We
+--- force-include the touched farm with `{}` so case (b) "explicit empty"
+--- fires on those clients and they clear correctly.
+---@param touchedFarmId number|nil farm whose state just changed (optional)
+function RmWatchlistStore.broadcastFullState(touchedFarmId)
     if g_server == nil then return end
-    if type(farmId) ~= "number" or farmId <= 0 then return end
-    local ids = RmWatchlistStore.pruneStaleSubset(farmId)
 
-    -- Host self-update if applicable.
-    local hostFarmId = RmWatchlistUI and RmWatchlistUI._localFarmId and RmWatchlistUI._localFarmId() or nil
-    if hostFarmId == farmId then
-        RmWatchlistUI.replaceFromSync(ids)
+    local snapshot = RmWatchlistStore._buildPrunedSnapshot(nil)
+    if type(touchedFarmId) == "number" and touchedFarmId > 0
+        and snapshot[touchedFarmId] == nil then
+        snapshot[touchedFarmId] = {}
+    end
+    g_server:broadcastEvent(RmWatchlistSyncEvent.new(snapshot))
+
+    -- Host self-update: replace optimistic mutation with pruned-and-canonical
+    -- state for the local farm. snapshot[hostFarmId] is the dense array
+    -- pruneStaleSubset already produces, so it goes straight into ipairs.
+    local hostFarmId = RmWatchlistUI and RmWatchlistUI._localFarmId
+        and RmWatchlistUI._localFarmId() or nil
+    local hostIds = nil
+    if hostFarmId ~= nil then
+        hostIds = snapshot[hostFarmId] or {}
+        RmWatchlistUI.replaceFromSync(hostIds)
     end
 
-    -- Remote same-farm clients.
-    if g_currentMission == nil or g_currentMission.userManager == nil then return end
-    local sent = 0
-    for _, user in ipairs(g_currentMission.userManager:getUsers()) do
-        local conn = user.getConnection and user:getConnection() or nil
-        if conn ~= nil then
-            local player = g_currentMission:getPlayerByConnection(conn)
-            if player ~= nil and player.farmId == farmId then
-                conn:sendEvent(RmWatchlistSyncEvent.new(ids))
-                sent = sent + 1
-            end
-        end
-    end
-    Log:debug("broadcastToFarm: farmId=%d ids=%d remote_sent=%d host_self=%s",
-        farmId, #ids, sent, tostring(hostFarmId == farmId))
+    local farmCount = 0
+    for _ in pairs(snapshot) do farmCount = farmCount + 1 end
+    Log:debug("broadcastFullState: touched=%s farms=%d host_self_ids=%d",
+        tostring(touchedFarmId), farmCount, hostIds and #hostIds or -1)
 end
