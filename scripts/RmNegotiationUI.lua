@@ -675,8 +675,11 @@ local function onClickBuyInterceptor(self)
     local isListed = RmFmAvailability.isForSale(farmlandId)
     local isEligible = RmFmAvailability.isEligibleForAvailability(farmland)
 
-    -- For non-eligible farmlands (e.g., NPC farmlands that never rotate), use vanilla
-    if not isEligible and not isListed then
+    -- For non-eligible farmlands (NPC-owned, never-rotating, or $0 plots),
+    -- use vanilla. Eligibility requires positive market value, so $0 plots
+    -- get the free vanilla buy instead of the negotiation engine's
+    -- "invalid_market_value" error.
+    if not isEligible then
         return originalOnClickBuy(self)
     end
 
@@ -720,6 +723,11 @@ local function onClickSellInterceptor(self)
 
     -- Only intercept if player owns this field
     if farmland.farmId ~= farmId then
+        return originalOnClickSell(self)
+    end
+
+    -- $0 plots: vanilla sell (negotiation engine rejects marketValue <= 0).
+    if not RmFmAvailability.hasPositiveMarketValue(farmland) then
         return originalOnClickSell(self)
     end
 

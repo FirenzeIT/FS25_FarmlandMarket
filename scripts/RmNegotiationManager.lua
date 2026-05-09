@@ -1061,7 +1061,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.negotiations"
     local i = 0
-    local profileCount, cooldownCount = 0, 0
+    local profileCount, cooldownCount, skippedProfiles, skippedCooldowns = 0, 0, 0, 0
 
     while true do
         local entryKey = string.format("%s.farmland(%d)", key, i)
@@ -1071,9 +1071,26 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
 
         local farmlandId = xmlFile:getValue(entryKey .. "#id")
         if farmlandId ~= nil then
+            -- Drop persisted profiles for farmlands that exist but no longer
+            -- pass the eligibility predicate (e.g. legacy $0 plot rows from
+            -- saves predating the price-gate). Unknown farmland IDs are kept
+            -- as-is - they may be synthetic test IDs or refer to a transient
+            -- lookup miss.
+            --
+            -- Timing: this scrub runs at Mission00.loadItemsFinished, before
+            -- crop value is added to farmland.price at onStartMission. See
+            -- the parallel comment in RmFmAvailability.loadFromXMLFile.
+            local farmland = g_farmlandManager:getFarmlandById(farmlandId)
+            local isStale = farmland ~= nil
+                and not RmFmAvailability.isEligibleForAvailability(farmland)
+
             -- Load seller profile if present
             local pKey = entryKey .. ".sellerProfile"
-            if xmlFile:hasProperty(pKey) then
+            if xmlFile:hasProperty(pKey) and isStale then
+                skippedProfiles = skippedProfiles + 1
+                Log:debug("NEG: Dropping stale persisted profile for farmland %d (no longer eligible)",
+                    farmlandId)
+            elseif xmlFile:hasProperty(pKey) then
                 local mode = xmlFile:getValue(pKey .. "#mode")
                 local preset = xmlFile:getValue(pKey .. "#preset")
                 local marketValue = xmlFile:getValue(pKey .. "#marketValue")
@@ -1103,7 +1120,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                 end
             end
 
-            -- Load cooldowns if present
+            -- Load cooldowns if present (skip whole block for stale farmlands)
             local j = 0
             while true do
                 local cdKey = string.format("%s.cooldown(%d)", entryKey, j)
@@ -1111,22 +1128,26 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                     break
                 end
 
-                local farmId = xmlFile:getValue(cdKey .. "#farmId")
-                local remaining = xmlFile:getValue(cdKey .. "#remaining")
-                local lastOutcome = xmlFile:getValue(cdKey .. "#lastOutcome")
+                if isStale then
+                    skippedCooldowns = skippedCooldowns + 1
+                else
+                    local farmId = xmlFile:getValue(cdKey .. "#farmId")
+                    local remaining = xmlFile:getValue(cdKey .. "#remaining")
+                    local lastOutcome = xmlFile:getValue(cdKey .. "#lastOutcome")
 
-                -- Skip expired cooldowns
-                if farmId ~= nil and remaining ~= nil and remaining > 0 then
-                    if RmNegotiationManager.cooldowns[farmlandId] == nil then
-                        RmNegotiationManager.cooldowns[farmlandId] = {}
+                    -- Skip expired cooldowns
+                    if farmId ~= nil and remaining ~= nil and remaining > 0 then
+                        if RmNegotiationManager.cooldowns[farmlandId] == nil then
+                            RmNegotiationManager.cooldowns[farmlandId] = {}
+                        end
+                        RmNegotiationManager.cooldowns[farmlandId][farmId] = {
+                            remaining = remaining,
+                            lastOutcome = lastOutcome,
+                        }
+                        cooldownCount = cooldownCount + 1
+                        Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%d outcome=%s",
+                            farmlandId, farmId, remaining, tostring(lastOutcome))
                     end
-                    RmNegotiationManager.cooldowns[farmlandId][farmId] = {
-                        remaining = remaining,
-                        lastOutcome = lastOutcome,
-                    }
-                    cooldownCount = cooldownCount + 1
-                    Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%d outcome=%s",
-                        farmlandId, farmId, remaining, tostring(lastOutcome))
                 end
 
                 j = j + 1
@@ -1136,7 +1157,8 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
         i = i + 1
     end
 
-    Log:debug("NEG: Loaded %d profiles, %d cooldowns from %d farmland entries", profileCount, cooldownCount, i)
+    Log:debug("NEG: Loaded %d profiles, %d cooldowns from %d farmland entries (stale skipped: %d profiles, %d cooldowns)",
+        profileCount, cooldownCount, i, skippedProfiles, skippedCooldowns)
     Log:debug("Negotiation state loaded")
     Log:trace("<<< RmNegotiationManager.loadFromXMLFile()")
 end

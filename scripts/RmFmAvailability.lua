@@ -108,11 +108,25 @@ RmFmAvailability._initialSyncSeen = false
 -- CORE LOGIC
 -- ============================================================================
 
+--- Single source of truth for "FM treats this farmland as priced".
+--- Used by isEligibleForAvailability AND directly by sell-side paths
+--- (sell intercepts player-owned land which eligibility excludes by design).
+--- Kept cheap: called from hot UI paths (button relabel on context change,
+--- watchlist recompute) so it does no logging and no allocations.
+---@param farmland table|nil Farmland object
+---@return boolean hasPositivePrice
+function RmFmAvailability.hasPositiveMarketValue(farmland)
+    return type(farmland) == "table"
+        and type(farmland.price) == "number"
+        and farmland.price > 0
+end
+
 --- Check if a farmland is eligible for the availability system
 ---@param farmland table Farmland object
 ---@return boolean eligible
 function RmFmAvailability.isEligibleForAvailability(farmland)
     return farmland.farmId == FarmlandManager.NO_OWNER_FARM_ID
+        and RmFmAvailability.hasPositiveMarketValue(farmland)
 end
 
 --- Check if a farmland is available for purchase
@@ -387,6 +401,7 @@ function RmFmAvailability.loadFromXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.availability"
     local i = 0
+    local skipped = 0
     while true do
         local entryKey = string.format("%s.farmland(%d)", key, i)
         if not xmlFile:hasProperty(entryKey) then
@@ -399,13 +414,37 @@ function RmFmAvailability.loadFromXMLFile(xmlFile)
         local listingDay = xmlFile:getValue(entryKey .. "#listingDay")
 
         if farmlandId ~= nil then
-            RmFmAvailability.availability[farmlandId] = {
-                isForSale = isForSale,
-                expiryDay = expiryDay,
-                listingDay = listingDay,
-            }
-            Log:trace("  AVAIL: Loaded farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
-                farmlandId, tostring(isForSale), expiryDay, listingDay)
+            -- Drop persisted rows for farmlands that exist but no longer
+            -- pass the eligibility predicate (e.g. legacy $0 plot rows from
+            -- saves predating the price-gate). Unknown farmland IDs are kept
+            -- as-is - they may be synthetic test IDs or refer to a transient
+            -- lookup miss.
+            --
+            -- Timing: this scrub runs at Mission00.loadItemsFinished, before
+            -- our Farmland.updatePrice override adds crop value at
+            -- onStartMission. We compare BASE price only. For typical $0
+            -- plots (map borders / forest) crop value is also 0, so the
+            -- comparison matches the runtime semantic. Exotic edge case: an
+            -- unowned farmland with a planted field could have base=0 but
+            -- crop>0, in which case this scrub drops a row that
+            -- updateAllFarmlandPrices would have made eligible. Acceptable:
+            -- evaluateDaily can re-list the parcel on a future tick.
+            local farmland = g_farmlandManager:getFarmlandById(farmlandId)
+            local isStale = farmland ~= nil
+                and not RmFmAvailability.isEligibleForAvailability(farmland)
+            if isStale then
+                skipped = skipped + 1
+                Log:debug("AVAIL: Dropping stale persisted row for farmland %d (no longer eligible)",
+                    farmlandId)
+            else
+                RmFmAvailability.availability[farmlandId] = {
+                    isForSale = isForSale,
+                    expiryDay = expiryDay,
+                    listingDay = listingDay,
+                }
+                Log:trace("  AVAIL: Loaded farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
+                    farmlandId, tostring(isForSale), expiryDay, listingDay)
+            end
         end
 
         i = i + 1
@@ -418,7 +457,8 @@ function RmFmAvailability.loadFromXMLFile(xmlFile)
         end
     end
 
-    Log:info("Availability state loaded: %d farmlands (%d for sale)", i, forSaleCount)
+    Log:info("Availability state loaded: %d farmlands (%d for sale, %d stale skipped)",
+        i - skipped, forSaleCount, skipped)
     Log:trace("<<< loadFromXMLFile()")
 end
 

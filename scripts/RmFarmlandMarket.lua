@@ -276,7 +276,9 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
             local hotspot = self.currentHotspot
             if hotspot ~= nil and hotspot.getFarmland ~= nil then
                 local farmland = hotspot:getFarmland()
-                if farmland ~= nil then
+                -- Skip relabel for FM-ineligible farmlands (incl. $0 plots);
+                -- vanilla buy handles them and the click interceptor falls through.
+                if farmland ~= nil and RmFmAvailability.isEligibleForAvailability(farmland) then
                     local isListed = RmFmAvailability.isForSale(farmland.id)
                     shouldNegBuy = (isListed and RmFmSettings.isNegotiateBuyEnabled())
                         or (not isListed and RmFmSettings.isUnlistedOffersEnabled())
@@ -291,8 +293,11 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
         local sellAction = self.contextActions[actions.SELL]
         if canSell and sellAction.isActive and RmFmSettings.isNegotiateSellEnabled() then
             local hotspot = self.currentHotspot
-            if hotspot ~= nil and hotspot.getFarmland ~= nil
-               and hotspot:getFarmland() ~= nil then
+            local farmland = (hotspot ~= nil and hotspot.getFarmland ~= nil)
+                and hotspot:getFarmland() or nil
+            -- Sell paths bypass eligibility (player-owned land); gate directly
+            -- on positive market value so $0 plots fall through to vanilla.
+            if RmFmAvailability.hasPositiveMarketValue(farmland) then
                 sellAction.title = g_i18n:getText("rm_fm_btn_negotiateSale")
             else
                 sellAction.title = nil
@@ -383,12 +388,17 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
             end
         end
 
-        -- Label overrides (PF doesn't touch labels, so this only runs here)
+        -- Label overrides (PF doesn't touch labels, so this only runs here).
+        -- Gates mirror setMapInputContext: buy-relabel on eligibility (excludes
+        -- $0 plots), sell-relabel on positive market value (eligibility
+        -- excludes player-owned by design).
         if contextBox.rmFmValueLabel ~= nil and farmland ~= nil then
             local isOwned = farmland.farmId == g_currentMission:getFarmId()
-            if isOwned and RmFmSettings.isNegotiateSellEnabled() then
+            if isOwned and RmFmSettings.isNegotiateSellEnabled()
+               and RmFmAvailability.hasPositiveMarketValue(farmland) then
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_marketValue") .. ":")
             elseif not isOwned and RmFmSettings.isNegotiateBuyEnabled()
+                   and RmFmAvailability.isEligibleForAvailability(farmland)
                    and RmFmAvailability.isForSale(farmland.id) then
                 contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
             else
