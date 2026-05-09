@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.6.0.0-dev:
+## 0.6.0.0 (Beta - 2026-05-09):
+- Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
 - Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
-- Added save migration from old single toggle - existing saves automatically map to all three settings
+- Added save migration from old single negotiation toggle - existing saves automatically map to all three settings
 - Added color blind mode support - farmland overlays and legend switch to blue/orange when enabled in game settings
 - Improved negotiation fairness - players must increase buy offers and decrease sell asks each round
 - Improved cooldown message in sell mode - no longer says "the owner is not interested" when the player is the owner
@@ -15,6 +16,8 @@
 - Fixed listing prices and market values not updating when price per hectare is changed in settings
 - Fixed sell cooldown blocking owner from re-listing after NPC buyer walks away
 - Fixed "Negotiate Sale" button appearing on placeables and buildings instead of only on farmland
+- Fixed buying or offering on a $0 farmland (map-border / outside-of-map plots) showing a "Negotiation error" - now falls through to the vanilla free purchase
+- Fixed missing listing price on clients for newly-listed watched parcels in multiplayer
 
 ## 0.5.0.0 (Beta - 2026-03-21):
 - Changed base price setting from multiplier presets to direct price per hectare input

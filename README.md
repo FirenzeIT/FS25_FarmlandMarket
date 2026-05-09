@@ -9,12 +9,13 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 
 ## Features
 
-- **Negotiation system** - buy and sell farmland through multi-round offers and counter-offers instead of instant transactions
+- **Negotiation system** - buy and sell farmland through multi-round offers and counter-offers instead of instant transactions, with independent toggles for purchases, sales, and unlisted offers
 - **Crop-value adjusted pricing** - field price includes estimated harvest value based on current growth state, crop type, and market prices
 - **Limited field availability** - only a subset of fields are for sale at any time, rotating daily with seasonal variation (more listings Nov-Mar)
 - **Five difficulty presets** - Easy, Normal, Hard, Harder, and Realistic - or turn availability off entirely
 - **Adjustable base price per hectare** - set a custom base farmland price per hectare from the settings
-- **Map color coding** - for-sale and not-for-sale fields are color-coded on the farmland map with a matching legend
+- **Watchlist** - track farmlands you are interested in and get notified when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
+- **Map color coding** - for-sale and not-for-sale fields are color-coded on the farmland map with a matching legend, with a color-blind palette that activates when the game's color-blind mode is enabled
 - **Game Settings integration** - all settings accessible from the in-game settings menu
 
 ## Installation
@@ -34,10 +35,11 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 ## Usage
 
 - Farmland prices automatically adjust to include crop value - fields with harvest-ready crops cost more than empty fields
-- Open **Game Settings** to configure the availability preset, base price per hectare, and negotiation toggle
+- Open **Game Settings** to configure the availability preset, base price per hectare, and negotiation settings (purchases, sales, and unlisted offers can be toggled independently)
 - To buy a field, select it on the map and click **"Make offer"** to start negotiating
 - To sell a field you own, select it and click **"Negotiate sale"** to receive offers
 - Check the **farmland map** to see which fields are currently for sale (green) or not for sale (red)
+- Open the **Watchlist** from the Farmlands subcategory on the map; toggle entries with **"Add to watchlist"** / **"Remove from watchlist"** in the farmland action menu
 
 
 ## Compatibility
