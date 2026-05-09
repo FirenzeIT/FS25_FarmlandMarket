@@ -24,7 +24,7 @@ local modDirectory = g_currentModDirectory
 
 source(modDirectory .. "scripts/rmlib/RmLogging.lua")
 local Log = RmLogging.getLogger("FarmlandMarket")
-Log:setLevel(RmLogging.LOG_LEVEL.INFO) -- Set to DEBUG/TRACE for development, INFO for normal use
+Log:setLevel(RmLogging.LOG_LEVEL.DEBUG) -- Set to DEBUG/TRACE for development, INFO for normal use
 
 -- =============================================================================
 -- NETWORK EVENTS

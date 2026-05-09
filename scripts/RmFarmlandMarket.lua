@@ -630,7 +630,13 @@ function RmFarmlandMarket.onDayChanged()
     local availWasEmpty = next(RmFmAvailability.availability) == nil
 
     RmFmAvailability.evaluateDaily()
+    -- ensureListedProfiles writes entry.listingPrice for newly-listed parcels.
+    -- It MUST run before the broadcast so the wire payload carries prices.
     RmNegotiationManager.ensureListedProfiles()
+
+    Log:debug("SYNC: Broadcasting availability sync to all clients")
+    g_server:broadcastEvent(RmAvailabilitySyncEvent.new())
+    RmFarmlandMarket.updateAllHotspotColors()
 
     if availWasEmpty then
         Log:debug("Watchlist for-sale notify: skipped (mid-session auto-init tick)")

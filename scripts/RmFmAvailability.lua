@@ -375,12 +375,10 @@ function RmFmAvailability.evaluateDaily()
             preset.name, expiredCount, newlyListedCount, forSaleCount)
     end
 
-    -- Step 4: Broadcast to clients
-    Log:debug("SYNC: Broadcasting availability sync to all clients")
-    g_server:broadcastEvent(RmAvailabilitySyncEvent.new())
-
-    -- Step 5: Refresh map colors
-    RmFarmlandMarket.updateAllHotspotColors()
+    -- Caller is responsible for: (1) populating entry.listingPrice via
+    -- ensureListedProfiles before (2) broadcasting the sync event and
+    -- (3) refreshing hotspot colors. Doing the broadcast here would ship a
+    -- payload missing prices for the parcels just listed in step 2.
 
     Log:trace("<<< evaluateDaily()")
 end
