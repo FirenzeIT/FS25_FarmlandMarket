@@ -137,10 +137,19 @@ function RmWatchlistDialog.buildEntries(farmlands, eligibilityFn, availabilityTa
                 price = availabilityEntry.listingPrice
                 expiryDay = availabilityEntry.expiryDay
             end
+            -- sortKey must match what the player will SEE in the row,
+            -- otherwise the dialog renders "Farmland 20" but sorts that
+            -- row by a hidden raw value like "1.0". When the populator
+            -- will fall back to "Farmland <id>", sort by farmlandId so
+            -- visible order matches visible text. Otherwise sort by the
+            -- raw name (display = name).
             local rawName = farmland.name
-            local sortKey = (rawName ~= nil and rawName ~= "")
-                and rawName
-                or string.format("%d", farmlandId)
+            local sortKey
+            if RmWatchlistUI._isFallbackName(rawName) then
+                sortKey = farmlandId
+            else
+                sortKey = rawName
+            end
             local areaInHa = farmland.areaInHa
             if areaInHa == nil then
                 nilAreaCount = nilAreaCount + 1
@@ -158,14 +167,32 @@ function RmWatchlistDialog.buildEntries(farmlands, eligibilityFn, availabilityTa
             table.insert(entries, entry)
         end
     end
-    -- Tiebreaker on equal sortKey: lower farmlandId wins. Lua's table.sort is
-    -- not stable, so two rows with the same display name would otherwise
-    -- swap positions across reloads.
+    -- Comparator with two branches:
+    --   - Natural-sort: when BOTH sortKeys parse as numbers (via
+    --     tonumber), compare them numerically so the visible order is
+    --     1, 2, 3, 11, 12, 20 instead of the lexicographic 1, 11, 12,
+    --     2, 20, 3. tonumber accepts strings ("11"), Lua numbers (5),
+    --     and signed/decimal variants ("-1", "1.0") - so a custom map
+    --     setting `farmland.name = 5` (number) sorts numerically just
+    --     like one setting `farmland.name = "5"` (string).
+    --   - Otherwise: lexicographic compare on string-coerced keys. The
+    --     coercion is the type-safety: Lua's `<` on number-vs-string
+    --     crashes; tostring() on each side dodges that without
+    --     changing the visible order for the dominant string-only case.
+    -- Tiebreaker on equal sort value remains farmlandId ascending.
     table.sort(entries, function(a, b)
-        if a.sortKey == b.sortKey then
+        local an, bn = tonumber(a.sortKey), tonumber(b.sortKey)
+        if an ~= nil and bn ~= nil then
+            if an == bn then
+                return a.farmlandId < b.farmlandId
+            end
+            return an < bn
+        end
+        local as, bs = tostring(a.sortKey), tostring(b.sortKey)
+        if as == bs then
             return a.farmlandId < b.farmlandId
         end
-        return a.sortKey < b.sortKey
+        return as < bs
     end)
     if nilAreaCount > 0 then
         Log:debug("buildEntries: %d farmlands had nil areaInHa, defaulted to 0", nilAreaCount)
@@ -317,12 +344,11 @@ function RmWatchlistDialog:populateCellForItemInSection(list, section, index, ce
         return
     end
 
-    -- Primary text: farmland name, with caller-side fallback for unnamed parcels.
-    local displayName = entry.name
-    if displayName == nil or displayName == "" then
-        displayName = g_i18n:getText("rm_fm_farmland_label") .. " " .. tostring(entry.farmlandId)
-    end
-    nameElement:setText(displayName)
+    -- Primary text: farmland name with the shared "Farmland N" fallback
+    -- (covers nil / empty / digits-only). Same helper the for-sale
+    -- notification uses, so the two paths render the same string for the
+    -- same farmland.
+    nameElement:setText(RmWatchlistUI._formatFarmlandName(entry.name, entry.farmlandId))
 
     -- Secondary text: area, plus expiry suffix when listed.
     if entry.isForSale and entry.expiryDay ~= nil then

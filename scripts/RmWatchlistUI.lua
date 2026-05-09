@@ -498,17 +498,59 @@ function RmWatchlistUI._collectTransitions(oldAvail, newAvail)
     return transitions
 end
 
---- Resolve a display name for a farmland id. Uses farmland.name when set
---- to a non-empty, non-digits-only string; otherwise falls back to the
---- localized "Farmland N" label. Returns nil if the farmland is missing or
---- not a table (custom-map defense - same type-table guard pattern that
---- RmWatchlistUI.pruneStale and RmWatchlistStore.applyToggle use against
---- non-table farmland values seen on some custom maps).
+--- Predicate: should `rawName` be replaced with the "Farmland N"
+--- fallback when rendered? Pure function with no globals - safe to
+--- call from anywhere, including `buildEntries` whose tests stub
+--- g_i18n / g_currentMission / g_farmlandManager.
 ---
---- '%' in the raw name is NOT escaped. Names flow through `%s` placeholders
---- in `string.format`, which copies the argument verbatim (it only parses
---- '%' inside the format string itself, not inside arguments). A custom-
---- map name like "50% off" renders as "50% off" in the final body.
+--- Returns true for: nil, non-string types (number / table / ...),
+--- empty string, all-whitespace string, and any string whose trimmed
+--- value parses via `tonumber` (covers "11", " 11 ", "-1", "1.0").
+---
+--- Returns false for non-empty strings with at least one non-numeric
+--- character that aren't pure-whitespace, like "Alpha", "1a",
+--- "North Pasture", or "50% off".
+---@param rawName any
+---@return boolean isFallback true when the displayed name should be
+---  "Farmland <id>" rather than rawName
+function RmWatchlistUI._isFallbackName(rawName)
+    if type(rawName) ~= "string" or rawName == "" then
+        return true
+    end
+    local trimmed = rawName:match("^%s*(.-)%s*$")
+    if trimmed == "" then
+        return true
+    end
+    return tonumber(trimmed) ~= nil
+end
+
+--- Format a farmland display name. Returns rawName verbatim when it's
+--- a real distinct label; otherwise falls back to the localized
+--- "Farmland N" label.
+---
+--- Shared by the dialog populator AND the for-sale notification's
+--- _resolveFarmlandName. Single source of truth for the fallback rule
+--- so the two paths can't diverge again (they did before this helper
+--- existed).
+---
+--- '%' in raw names is NOT escaped: names flow through `%s` placeholders
+--- in `string.format`, which copies the argument verbatim. A name like
+--- "50% off" renders as "50% off" in the final body.
+---@param rawName string|nil|any the candidate raw name (often farmland.name)
+---@param farmlandId number the id to use in the fallback label
+---@return string display name (always a string)
+function RmWatchlistUI._formatFarmlandName(rawName, farmlandId)
+    if not RmWatchlistUI._isFallbackName(rawName) then
+        return rawName
+    end
+    local label = (g_i18n ~= nil and g_i18n.getText) and g_i18n:getText("rm_fm_farmland_label") or "Farmland"
+    return label .. " " .. tostring(farmlandId)
+end
+
+--- Resolve a display name for a farmland id by looking the farmland up in
+--- g_farmlandManager and delegating to _formatFarmlandName. Returns nil if
+--- the farmland is missing or not a table (custom-map defense - same
+--- type-table guard pattern RmWatchlistUI.pruneStale uses).
 ---@param id number farmlandId
 ---@return string|nil name display name, or nil if the farmland is unusable
 function RmWatchlistUI._resolveFarmlandName(id)
@@ -516,13 +558,7 @@ function RmWatchlistUI._resolveFarmlandName(id)
     if farmlands == nil then return nil end
     local farmland = farmlands[id]
     if type(farmland) ~= "table" then return nil end
-    local raw = farmland.name
-    if type(raw) == "string" and raw ~= "" and not string.match(raw, "^%d+$") then
-        return raw
-    end
-    -- Numeric-only / nil / empty -> "Farmland <id>"
-    local label = (g_i18n ~= nil and g_i18n.getText) and g_i18n:getText("rm_fm_farmland_label") or "Farmland"
-    return label .. " " .. tostring(id)
+    return RmWatchlistUI._formatFarmlandName(farmland.name, id)
 end
 
 --- Format a built-items list (after filtering + name resolution + sort) into
@@ -728,7 +764,10 @@ local function onWatchlistToggleClick(frame)
     -- new action.title. Without this, the data flips but the visible
     -- cell keeps showing the old label and the player concludes the
     -- click did nothing. reloadData only re-runs the populator and has
-    -- no other side effects on the panel.
+    -- no other side effects on the panel. We do NOT snap focus to a
+    -- different row: Tag/Untag (the precedent we considered mirroring)
+    -- also keeps focus on the just-clicked toggle, so the previous
+    -- assumption that focus should snap was an in-game misobservation.
     if frame.contextButtonListFarmland ~= nil then
         frame.contextButtonListFarmland:reloadData()
     end
