@@ -233,18 +233,127 @@ local function onClickMapOverviewSelectorHook(self, state)
 end
 
 -- ============================================================================
--- WATCHLIST STATE (in-memory, per-session)
+-- WATCHLIST STATE (local cache; the server master lives in RmWatchlistStore)
 --
--- Curated set of farmlandIds the local player is watching. Mutated via the
--- map action-menu toggle button; read by the dialog's filter and by the
--- _recomputeAction helper that sets the button's label.
+-- Curated set of farmlandIds the local player is watching, scoped to the
+-- local farm only. Mutated via the map action-menu toggle button; read by
+-- the dialog's filter and by the _recomputeAction helper.
 --
--- Per-farm scope is logical (see Design Notes in the spec); the in-memory
--- shape stays single-level because the client only sees its own farm's
--- perspective. Persistence and the [farmId] save-key arrive in a future spec.
+-- Per-farm scope is enforced in the SERVER MASTER (RmWatchlistStore.byFarm,
+-- keyed [farmId][farmlandId]). The client view stays single-level because a
+-- client only ever sees its own farm's subset. Mutations on the client
+-- update locally (optimistic) and dispatch through the store (host: direct
+-- call; non-host client: RmWatchlistToggleEvent). On server rejection the
+-- server sends a corrective RmWatchlistSyncEvent that overwrites this view.
 -- ============================================================================
 
 RmWatchlistUI.watched = {}
+
+--- Local farm id helper. Used by add/remove on the host short-circuit path.
+--- Mirrors RmNegotiationManager's resolution of the local farmId.
+---@return number|nil
+function RmWatchlistUI._localFarmId()
+    if g_currentMission == nil or g_currentMission.getFarmId == nil then
+        return nil
+    end
+    local farmId = g_currentMission:getFarmId()
+    if type(farmId) ~= "number" or farmId <= 0 then
+        return nil
+    end
+    return farmId
+end
+
+--- Replace the local watched cache from a server-pushed id list. Used by
+--- RmWatchlistSyncEvent (late-join + corrective syncs) AND by the host's
+--- post-load rehydrate hook. Mutates the table in place so external
+--- references stay valid.
+---@param ids number[] farmlandIds for this client's farm
+function RmWatchlistUI.replaceFromSync(ids)
+    for k in pairs(RmWatchlistUI.watched) do
+        RmWatchlistUI.watched[k] = nil
+    end
+    if ids ~= nil then
+        for _, farmlandId in ipairs(ids) do
+            RmWatchlistUI.watched[farmlandId] = true
+        end
+    end
+    Log:debug("RmWatchlistUI.replaceFromSync: %d entries", ids and #ids or 0)
+end
+
+--- Roll back the local optimistic mutation when dispatch can't reach the
+--- server (or when the host short-circuit rejects). Mirror image of the
+--- mutation add/remove just performed: addOp=true -> remove, addOp=false
+--- -> add. Keeps watched in sync with the server master without waiting
+--- for a corrective sync (which the host short-circuit can't trigger
+--- and which a no-connection client will never receive).
+---@param farmlandId number
+---@param addOp boolean operation that just happened locally and must be undone
+local function rollbackLocal(farmlandId, addOp)
+    if addOp then
+        RmWatchlistUI.watched[farmlandId] = nil
+    else
+        RmWatchlistUI.watched[farmlandId] = true
+    end
+    Log:debug("rollbackLocal: undid %s for farmlandId=%s",
+        addOp and "add" or "remove", tostring(farmlandId))
+end
+
+--- Dispatch a toggle to the server. Host short-circuits to RmWatchlistStore
+--- (no event round-trip); non-host clients send RmWatchlistToggleEvent.
+--- Internal: callers should use add/remove which apply optimistic local
+--- updates first.
+---
+--- Rollback policy: when the host's applyToggle rejects, OR when a client
+--- has no path to the server (no g_client / no conn), the optimistic local
+--- update is undone here. For accepted client sends, divergence is
+--- self-correcting - the server either commits or sends a corrective sync.
+--- Test-only seam. When set true, dispatchToggle becomes a no-op that
+--- always returns true, leaving the optimistic local mutation in place
+--- and bypassing the server master entirely. Used by RmWatchlistStateTests
+--- (which only exercise the local-cache contract with synthetic ids that
+--- would otherwise be rejected by RmWatchlistStore.applyToggle). Tests
+--- MUST flip this back to false (or nil) on teardown.
+RmWatchlistUI._bypassDispatchForTest = false
+
+---@param farmlandId number
+---@param addOp boolean
+---@return boolean committed true when the local mutation should be reported
+---  as the function's outcome (host applyToggle accepted, OR client event
+---  was sent successfully). false when the local mutation was rolled back.
+local function dispatchToggle(farmlandId, addOp)
+    if RmWatchlistUI._bypassDispatchForTest then
+        return true
+    end
+    if g_server ~= nil then
+        local farmId = RmWatchlistUI._localFarmId()
+        if farmId == nil then
+            Log:warning("dispatchToggle: no local farmId, host short-circuit skipped; rolling back")
+            rollbackLocal(farmlandId, addOp)
+            return false
+        end
+        local ok, reason = RmWatchlistStore.applyToggle(farmId, farmlandId, addOp)
+        if not ok then
+            Log:debug("dispatchToggle: host applyToggle rejected (reason=%s); rolling back",
+                tostring(reason))
+            rollbackLocal(farmlandId, addOp)
+            return false
+        end
+        return true
+    end
+    if g_client == nil then
+        Log:warning("dispatchToggle: no g_client connection, dropping; rolling back")
+        rollbackLocal(farmlandId, addOp)
+        return false
+    end
+    local conn = g_client:getServerConnection()
+    if conn == nil then
+        Log:warning("dispatchToggle: no server connection, dropping; rolling back")
+        rollbackLocal(farmlandId, addOp)
+        return false
+    end
+    conn:sendEvent(RmWatchlistToggleEvent.new(farmlandId, addOp))
+    return true
+end
 
 --- Check whether a farmland is on the player's watchlist.
 ---@param farmlandId number
@@ -254,8 +363,16 @@ function RmWatchlistUI.isWatched(farmlandId)
 end
 
 --- Add a farmland to the watchlist. Idempotent.
+--- Side-effect model: optimistic local update + dispatch to the server
+--- master (host: direct RmWatchlistStore.applyToggle; non-host client:
+--- RmWatchlistToggleEvent). The return value reflects the COMMITTED
+--- outcome - i.e. it is `true` only when dispatch accepted (host: store
+--- accepted; client: event sent successfully). On host rejection or no
+--- client connection, the optimistic mutation is rolled back and we
+--- return false, so callers (and the regression suite) see truthful
+--- state transitions rather than transient optimistic ones.
 ---@param farmlandId number
----@return boolean wasAdded true if newly added; false if already present
+---@return boolean wasAdded true if newly added AND dispatch committed; false otherwise
 function RmWatchlistUI.add(farmlandId)
     if RmWatchlistUI.watched[farmlandId] == true then
         return false
@@ -263,32 +380,36 @@ function RmWatchlistUI.add(farmlandId)
     RmWatchlistUI.watched[farmlandId] = true
     -- %s + tostring is defensive: production callers pass numeric ids, but a
     -- bad caller passing a string id would crash a %d formatter.
-    Log:debug("RmWatchlistUI.add: farmlandId=%s added", tostring(farmlandId))
-    return true
+    Log:debug("RmWatchlistUI.add: farmlandId=%s added (local)", tostring(farmlandId))
+    return dispatchToggle(farmlandId, true)
 end
 
 --- Remove a farmland from the watchlist. Idempotent.
+--- See add() for the side-effect model. Return value reflects the
+--- committed outcome.
 ---@param farmlandId number
----@return boolean wasRemoved true if was present and removed; false otherwise
+---@return boolean wasRemoved true if was present AND dispatch committed; false otherwise
 function RmWatchlistUI.remove(farmlandId)
     if RmWatchlistUI.watched[farmlandId] ~= true then
         return false
     end
     RmWatchlistUI.watched[farmlandId] = nil
-    Log:debug("RmWatchlistUI.remove: farmlandId=%s removed", tostring(farmlandId))
-    return true
+    Log:debug("RmWatchlistUI.remove: farmlandId=%s removed (local)", tostring(farmlandId))
+    return dispatchToggle(farmlandId, false)
 end
 
---- Flip a farmland's watchlist membership.
+--- Flip a farmland's watchlist membership. Returns the watched state AFTER
+--- dispatch settles, so a host rejection on add (or a no-conn rollback)
+--- correctly reports `false` rather than the optimistic intent.
 ---@param farmlandId number
----@return boolean isNowWatched the new state
+---@return boolean isNowWatched the new state, post-dispatch
 function RmWatchlistUI.toggle(farmlandId)
     if RmWatchlistUI.isWatched(farmlandId) then
         RmWatchlistUI.remove(farmlandId)
-        return false
+    else
+        RmWatchlistUI.add(farmlandId)
     end
-    RmWatchlistUI.add(farmlandId)
-    return true
+    return RmWatchlistUI.isWatched(farmlandId)
 end
 
 --- Drop every entry. Called on map unload via the BaseMission.delete hook.

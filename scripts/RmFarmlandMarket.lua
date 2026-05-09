@@ -944,6 +944,11 @@ function RmFarmlandMarket.registerXmlSchema()
     schema:register(XMLValueType.INT, cdPath .. "#remaining", "Remaining cooldown periods")
     schema:register(XMLValueType.STRING, cdPath .. "#lastOutcome", "Last negotiation outcome")
 
+    -- Watchlist: per-farm sets of farmlandIds the player is watching.
+    local wlFarmPath = "rmFarmlandMarket.watchlist.farm(?)"
+    schema:register(XMLValueType.INT, wlFarmPath .. "#farmId", "Watching farm ID")
+    schema:register(XMLValueType.INT, wlFarmPath .. ".entry(?)#farmlandId", "Watched farmland ID")
+
     RmFarmlandMarket.xmlSchema = schema
     Log:debug("XML schema registered")
 end
@@ -978,6 +983,7 @@ local function loadFromSavegame()
     RmFmSettings.loadFromXMLFile(xmlFile)
     RmFmAvailability.loadFromXMLFile(xmlFile)
     RmNegotiationManager.loadFromXMLFile(xmlFile)
+    RmWatchlistStore.loadFromXMLFile(xmlFile)
 
     -- Write listing prices from restored profiles onto availability entries
     RmNegotiationManager.ensureListedProfiles()
@@ -1018,6 +1024,7 @@ local function saveToSavegame()
     RmFmSettings.saveToXMLFile(xmlFile)
     RmFmAvailability.saveToXMLFile(xmlFile)
     RmNegotiationManager.saveToXMLFile(xmlFile)
+    RmWatchlistStore.saveToXMLFile(xmlFile)
 
     xmlFile:save()
     xmlFile:delete()
@@ -1111,6 +1118,25 @@ local function onStartMission()
     RmFarmlandMarket.updateAllFarmlandPrices()
     RmFmAvailability.initialize()
     RmNegotiationManager.ensureListedProfiles()
+
+    -- Host post-load rehydrate of the local watchlist cache. The savegame
+    -- load already populated RmWatchlistStore.byFarm; push the local farm's
+    -- subset into RmWatchlistUI.watched so the dialog sees persisted state
+    -- on first open without a network round-trip.
+    if g_server ~= nil then
+        local farmId = RmWatchlistUI._localFarmId()
+        if farmId ~= nil then
+            local ids = RmWatchlistStore.pruneStaleSubset(farmId)
+            RmWatchlistUI.replaceFromSync(ids)
+            Log:debug("Watchlist host rehydrate: %d entries for farmId=%d", #ids, farmId)
+        else
+            -- Diagnostic: if a player reports their watchlist appears empty
+            -- after load, this line in the log is the smoking gun (e.g.
+            -- spectator host, dedicated server, or getFarmId not yet bound).
+            Log:warning("Watchlist host rehydrate skipped: _localFarmId returned nil; UI cache stays empty until a sync arrives")
+        end
+    end
+
     Log:info("FarmlandMarket initialization complete")
 end
 
@@ -1129,6 +1155,11 @@ local function onDeleteMap()
 
     -- Clean up availability state
     RmFmAvailability.reset()
+
+    -- Clean up watchlist server master so the next save load starts fresh.
+    -- The local cache (RmWatchlistUI.watched) is wiped by RmWatchlistUI's
+    -- own BaseMission.delete hook.
+    RmWatchlistStore.reset()
 
     -- Clean up negotiation dialog
     local dialog = RmNegotiationDialog.getInstance()
@@ -1186,12 +1217,15 @@ FarmlandManager.setLandOwnership = Utils.appendedFunction(
     end
 )
 
--- Hook into initial client state sync (send availability to joining clients)
+-- Hook into initial client state sync (send availability + watchlist subset
+-- to joining clients). RmFmSettings.setupHooks installs a separate hook for
+-- settings sync; this hook covers availability and watchlist together.
 FSBaseMission.sendInitialClientState = Utils.appendedFunction(
     FSBaseMission.sendInitialClientState,
     function(_, connection)
         if g_server ~= nil then
             RmFmAvailability.sendInitialClientState(connection)
+            RmWatchlistStore.sendInitialClientState(connection)
         end
     end
 )
