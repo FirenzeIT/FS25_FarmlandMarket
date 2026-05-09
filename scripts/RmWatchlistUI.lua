@@ -459,6 +459,182 @@ function RmWatchlistUI.pruneStale(farmlandsTable)
 end
 
 -- ============================================================================
+-- FOR-SALE TRANSITION NOTIFICATION
+--
+-- When a watched farmland flips isForSale=false -> isForSale=true, we surface
+-- an in-game message that the player must dismiss. Two paths feed this helper:
+--   - Host: RmFarmlandMarket.onDayChanged calls notifyForSaleTransitions
+--     AFTER ensureListedProfiles has materialized listingPrice values.
+--   - Client: RmAvailabilitySyncEvent:run computes the diff against the old
+--     local availability state and calls notifyForSaleTransitions, gated by
+--     RmFmAvailability._initialSyncSeen so the first sync after join is silent.
+-- ============================================================================
+
+local FOR_SALE_OVERFLOW_CAP = 8
+
+--- Compute false->true transitions between two availability snapshots.
+--- Returns array of {id, listingPrice} for ids where old.isForSale was false
+--- (or missing) and new.isForSale is true. Order is undefined; the caller
+--- (or the formatter) sorts by id. Pure function for testability.
+---@param oldAvail table map of {[id] = {isForSale, ...}} from before the change
+---@param newAvail table map of {[id] = {isForSale, listingPrice, ...}} after the change
+---@return table[] transitions list of {id=number, listingPrice=number|nil}
+function RmWatchlistUI._collectTransitions(oldAvail, newAvail)
+    local transitions = {}
+    if newAvail == nil then return transitions end
+    for id, newEntry in pairs(newAvail) do
+        local nowForSale = type(newEntry) == "table" and newEntry.isForSale == true
+        if nowForSale then
+            local oldEntry = oldAvail and oldAvail[id] or nil
+            local wasForSale = type(oldEntry) == "table" and oldEntry.isForSale == true
+            if not wasForSale then
+                table.insert(transitions, {
+                    id = id,
+                    listingPrice = newEntry.listingPrice,
+                })
+            end
+        end
+    end
+    return transitions
+end
+
+--- Resolve a display name for a farmland id. Uses farmland.name when set
+--- to a non-empty, non-digits-only string; otherwise falls back to the
+--- localized "Farmland N" label. Returns nil if the farmland is missing or
+--- not a table (custom-map defense - same type-table guard pattern that
+--- RmWatchlistUI.pruneStale and RmWatchlistStore.applyToggle use against
+--- non-table farmland values seen on some custom maps).
+---
+--- '%' in the raw name is NOT escaped. Names flow through `%s` placeholders
+--- in `string.format`, which copies the argument verbatim (it only parses
+--- '%' inside the format string itself, not inside arguments). A custom-
+--- map name like "50% off" renders as "50% off" in the final body.
+---@param id number farmlandId
+---@return string|nil name display name, or nil if the farmland is unusable
+function RmWatchlistUI._resolveFarmlandName(id)
+    local farmlands = g_farmlandManager and g_farmlandManager:getFarmlands() or nil
+    if farmlands == nil then return nil end
+    local farmland = farmlands[id]
+    if type(farmland) ~= "table" then return nil end
+    local raw = farmland.name
+    if type(raw) == "string" and raw ~= "" and not string.match(raw, "^%d+$") then
+        return raw
+    end
+    -- Numeric-only / nil / empty -> "Farmland <id>"
+    local label = (g_i18n ~= nil and g_i18n.getText) and g_i18n:getText("rm_fm_farmland_label") or "Farmland"
+    return label .. " " .. tostring(id)
+end
+
+--- Format a built-items list (after filtering + name resolution + sort) into
+--- the title and body strings that go to showInGameMessage. Pure function.
+---@param items table[] list of {id, name, listingPrice}; assumed sorted by id ascending
+---@return string title, string body
+function RmWatchlistUI._formatMessage(items)
+    local title = (g_i18n ~= nil and g_i18n.getText)
+        and g_i18n:getText("rm_fm_watchlist_now_for_sale_title") or "Watchlist update"
+
+    if #items == 1 then
+        local item = items[1]
+        if type(item.listingPrice) == "number" and item.listingPrice > 0 then
+            -- formatMoney(amount, 0, true, true) = "with currency unit and
+            -- space" - matches the convention used elsewhere in the mod
+            -- (RmNegotiationUI, RmFarmlandMarket contextbox), so the
+            -- player's selected currency (EUR / GBP / USD / ...) is
+            -- honoured rather than hardcoded. pcall guards against
+            -- formatMoney choking on huge / non-finite values; on failure
+            -- we fall back to a plain integer string with no unit.
+            local ok, priceStr = pcall(function()
+                if g_i18n ~= nil and g_i18n.formatMoney then
+                    return g_i18n:formatMoney(item.listingPrice, 0, true, true)
+                end
+                return tostring(item.listingPrice)
+            end)
+            if not ok then priceStr = tostring(item.listingPrice) end
+            local fmt = (g_i18n ~= nil and g_i18n.getText)
+                and g_i18n:getText("rm_fm_watchlist_now_for_sale_single_with_price")
+                or "%s is now for sale at %s"
+            return title, string.format(fmt, item.name, priceStr)
+        end
+        local fmt = (g_i18n ~= nil and g_i18n.getText)
+            and g_i18n:getText("rm_fm_watchlist_now_for_sale_single_no_price")
+            or "%s is now for sale"
+        return title, string.format(fmt, item.name)
+    end
+
+    -- Batched: comma-separate up to 8 names, then "and N more".
+    local count = #items
+    local names = {}
+    local cap = math.min(count, FOR_SALE_OVERFLOW_CAP)
+    for i = 1, cap do
+        names[i] = items[i].name
+    end
+    local nameList = table.concat(names, ", ")
+    if count > FOR_SALE_OVERFLOW_CAP then
+        local overflowFmt = (g_i18n ~= nil and g_i18n.getText)
+            and g_i18n:getText("rm_fm_watchlist_now_for_sale_overflow_suffix")
+            or ", and %d more"
+        nameList = nameList .. string.format(overflowFmt, count - FOR_SALE_OVERFLOW_CAP)
+    end
+    local fmt = (g_i18n ~= nil and g_i18n.getText)
+        and g_i18n:getText("rm_fm_watchlist_now_for_sale_batched")
+        or "%d watched farmlands are now for sale: %s"
+    return title, string.format(fmt, count, nameList)
+end
+
+--- Main entry point. Takes raw transitions (id + listingPrice from the
+--- transition site), filters to local watched + still-eligible + non-self,
+--- resolves names, sorts by id ascending, formats, and calls
+--- showInGameMessage. Silent no-op when there is no HUD (dedicated server,
+--- mid-teardown) or when no transitions survive filtering.
+---@param transitions table[] list of {id=number, listingPrice=number|nil}
+function RmWatchlistUI.notifyForSaleTransitions(transitions)
+    if transitions == nil or #transitions == 0 then return end
+    if g_currentMission == nil or g_currentMission.hud == nil
+        or g_currentMission.hud.showInGameMessage == nil then
+        Log:debug("notifyForSaleTransitions: HUD unavailable, silent return")
+        return
+    end
+
+    local localFarmId = RmWatchlistUI._localFarmId()
+    local farmlands = g_farmlandManager and g_farmlandManager:getFarmlands() or nil
+
+    -- Dedupe by id: a caller passing the same id twice (race / batched
+    -- syncs / future bug) would otherwise show "Farmland 7, Farmland 7"
+    -- and inflate the count.
+    local items = {}
+    local seen = {}
+    for _, t in ipairs(transitions) do
+        if not seen[t.id] and RmWatchlistUI.isWatched(t.id) then
+            local farmland = farmlands and farmlands[t.id] or nil
+            if type(farmland) == "table"
+                and RmFmAvailability.isEligibleForAvailability(farmland)
+                and farmland.farmId ~= localFarmId then
+                local name = RmWatchlistUI._resolveFarmlandName(t.id)
+                if name ~= nil then
+                    seen[t.id] = true
+                    table.insert(items, {
+                        id = t.id,
+                        name = name,
+                        listingPrice = t.listingPrice,
+                    })
+                end
+            end
+        end
+    end
+
+    if #items == 0 then return end
+
+    table.sort(items, function(a, b) return a.id < b.id end)
+
+    local title, body = RmWatchlistUI._formatMessage(items)
+    -- duration=-1 -> engine MAX_DURATION (5min ceiling). Player can dismiss
+    -- any time via MENU_ACCEPT / SKIP_MESSAGE_BOX. Silent (no sound).
+    g_currentMission.hud:showInGameMessage(title, body, -1, nil, nil, nil)
+    Log:info("WATCHLIST: notified %d for-sale transition%s",
+        #items, #items == 1 and "" or "s")
+end
+
+-- ============================================================================
 -- ACTION-MENU TOGGLE (Add to watchlist / Remove from watchlist)
 --
 -- Registration: contextActions is iterated with ipairs, so only contiguous

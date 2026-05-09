@@ -134,18 +134,59 @@ function RmAvailabilitySyncEvent:run(connection)
         -- SERVER: Reject (server-authoritative only)
         Log:warning("Availability sync rejected: server is authoritative, clients cannot send")
         return
-    else
-        -- CLIENT: Received from server
-        local forSaleCount = self:countForSale()
-        Log:info("Received availability sync: %d farmlands (%d for sale)",
-            self:countEntries(), forSaleCount)
+    end
 
-        -- Replace local availability table
-        RmFmAvailability.availability = self.availability
+    -- CLIENT: delegate to the testable inner method. Tests call
+    -- _applyClientSync directly instead of trying to fool g_server, which
+    -- the fmTest harness keeps non-nil for the duration of the suite.
+    self:_applyClientSync(connection)
 
-        -- Refresh map hotspot colors
+    Log:trace("<<< RmAvailabilitySyncEvent:run()")
+end
+
+--- Apply an incoming sync as if we were a client. Splits out so unit tests
+--- can drive the client-side logic without stubbing g_server (which the
+--- fmTest harness keeps set throughout, breaking any g_server=nil swap).
+---@param connection table|nil
+function RmAvailabilitySyncEvent:_applyClientSync(connection)
+    local forSaleCount = self:countForSale()
+    Log:info("Received availability sync: %d farmlands (%d for sale)",
+        self:countEntries(), forSaleCount)
+
+    -- Snapshot the old availability BEFORE replacement so the watchlist
+    -- transition diff has something to compare against. This feature
+    -- assumes FULL-SNAPSHOT semantics (current behavior); if the event
+    -- is ever refactored to delta payloads, the diff logic in
+    -- RmWatchlistUI._collectTransitions would need redesign. See
+    -- spec-watchlist-for-sale-notification.md for the contract.
+    local oldAvailability = RmFmAvailability.availability or {}
+
+    -- Replace local availability table
+    RmFmAvailability.availability = self.availability
+
+    -- Refresh map hotspot colors
+    if RmFarmlandMarket ~= nil and RmFarmlandMarket.updateAllHotspotColors ~= nil then
         RmFarmlandMarket.updateAllHotspotColors()
     end
 
-    Log:trace("<<< RmAvailabilitySyncEvent:run()")
+    -- Watchlist for-sale notification: the first sync after join is the
+    -- baseline and is silent. Subsequent syncs notify on false->true
+    -- transitions. Even if the first sync is empty (server had no
+    -- availability state at join), that's still the baseline - the next
+    -- sync's diff against {} correctly identifies any new listings as
+    -- genuine post-join transitions, which IS the right behaviour
+    -- (those parcels are new from this player's perspective). The flag
+    -- is reset on BaseMission.delete and onStartMission so a reconnect
+    -- starts fresh.
+    if RmFmAvailability._initialSyncSeen ~= true then
+        RmFmAvailability._initialSyncSeen = true
+        Log:debug("Watchlist for-sale notify: first sync seen (count=%d), suppressing notifications",
+            self:countEntries())
+    else
+        local transitions = RmWatchlistUI._collectTransitions(
+            oldAvailability, self.availability)
+        if #transitions > 0 then
+            RmWatchlistUI.notifyForSaleTransitions(transitions)
+        end
+    end
 end

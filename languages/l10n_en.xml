@@ -102,5 +102,10 @@
         <text name="rm_fm_watchlist_empty" text="Your watchlist is empty. Select a farmland on the map and use Add to watchlist."/>
         <text name="rm_fm_btn_addToWatchlist" text="Add to watchlist"/>
         <text name="rm_fm_btn_removeFromWatchlist" text="Remove from watchlist"/>
+        <text name="rm_fm_watchlist_now_for_sale_title" text="Farmland watchlist update"/>
+        <text name="rm_fm_watchlist_now_for_sale_single_with_price" text="%s is now for sale at %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_single_no_price" text="%s is now for sale"/>
+        <text name="rm_fm_watchlist_now_for_sale_batched" text="%d watched farmlands are now for sale: %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_overflow_suffix" text=", and %d more"/>
     </texts>
 </l10n>

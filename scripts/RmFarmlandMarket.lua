@@ -602,8 +602,46 @@ function RmFarmlandMarket.onDayChanged()
         return
     end
 
+    -- Snapshot watched ids' isForSale state BEFORE evaluateDaily mutates the
+    -- table. Only need the slice that local watched cares about; for ids the
+    -- player isn't watching, the diff result is irrelevant.
+    local oldByFarmlandId = {}
+    for id in pairs(RmWatchlistUI.watched) do
+        local entry = RmFmAvailability.availability[id]
+        oldByFarmlandId[id] = type(entry) == "table" and entry.isForSale == true
+    end
+
+    -- Detect the "auto-init" path: evaluateDaily self-heals when the table
+    -- is empty (preset toggled from off -> active mid-session). On that
+    -- tick every entry initialize() lists is a fresh listing, NOT an
+    -- organic transition - notifying would flood the player with every
+    -- watched + initially-listed parcel. Spec rule: initialize is never a
+    -- notification source, including this auto-init branch.
+    local availWasEmpty = next(RmFmAvailability.availability) == nil
+
     RmFmAvailability.evaluateDaily()
     RmNegotiationManager.ensureListedProfiles()
+
+    if availWasEmpty then
+        Log:debug("Watchlist for-sale notify: skipped (mid-session auto-init tick)")
+        Log:trace("<<< onDayChanged()")
+        return
+    end
+
+    -- Compute false->true transitions on the watched slice. listingPrice is
+    -- now authoritative because ensureListedProfiles ran above.
+    local transitions = {}
+    for id, wasForSale in pairs(oldByFarmlandId) do
+        local entry = RmFmAvailability.availability[id]
+        local nowForSale = type(entry) == "table" and entry.isForSale == true
+        if nowForSale and not wasForSale then
+            table.insert(transitions, { id = id, listingPrice = entry.listingPrice })
+        end
+    end
+    if #transitions > 0 then
+        RmWatchlistUI.notifyForSaleTransitions(transitions)
+    end
+
     Log:trace("<<< onDayChanged()")
 end
 
@@ -1115,6 +1153,13 @@ function RmFarmlandMarket.updateAllFarmlandPrices()
 end
 
 local function onStartMission()
+    -- Reset the watchlist for-sale notification gate at mission start as
+    -- defense in depth: BaseMission.delete normally resets it on session
+    -- teardown, but if delete fails to fire (crash recovery, abnormal
+    -- shutdown) the flag could carry stale "true" into the next session
+    -- and skip the legitimate first-sync suppression.
+    RmFmAvailability._initialSyncSeen = false
+
     RmFarmlandMarket.updateAllFarmlandPrices()
     RmFmAvailability.initialize()
     RmNegotiationManager.ensureListedProfiles()
@@ -1155,6 +1200,10 @@ local function onDeleteMap()
 
     -- Clean up availability state
     RmFmAvailability.reset()
+
+    -- Reset the watchlist for-sale notification gate so a reconnect starts
+    -- with a clean first-sync-is-silent posture.
+    RmFmAvailability._initialSyncSeen = false
 
     -- Clean up watchlist server master so the next save load starts fresh.
     -- The local cache (RmWatchlistUI.watched) is wiped by RmWatchlistUI's

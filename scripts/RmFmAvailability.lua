@@ -96,6 +96,14 @@ RmFmAvailability.SELLING_SEASON = { [1]=true, [2]=true, [3]=true, [11]=true, [12
 --- Availability table: { [farmlandId] = {isForSale, expiryDay, listingDay} }
 RmFmAvailability.availability = {}
 
+--- One-shot per-mission flag for the watchlist for-sale notification path.
+--- The first RmAvailabilitySyncEvent:run a client receives delivers the
+--- current full availability state, which by definition lists every
+--- currently-for-sale parcel. Without this gate, every watched + currently-
+--- listed farmland would generate a notification at join. Reset to false
+--- on BaseMission.delete so reconnect starts fresh.
+RmFmAvailability._initialSyncSeen = false
+
 -- ============================================================================
 -- CORE LOGIC
 -- ============================================================================
