@@ -898,8 +898,8 @@ local function registerWatchlistContextAction(frame)
     -- Re-arm the per-frame-open trace flag on EVERY onFrameOpen, even when
     -- the action entry already exists. Otherwise reopens of the same frame
     -- instance silence setMapInputContext TRACE after the first open and
-    -- the spec's "TRACE entry only on first call per frame open" contract
-    -- is violated for every subsequent open.
+    -- the "one TRACE entry per frame open" invariant is violated for every
+    -- subsequent open.
     frame.rmFmWatchlistContextTraceArmed = true
 
     if frame.rmFmWatchlistActionKey ~= nil

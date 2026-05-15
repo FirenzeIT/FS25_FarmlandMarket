@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.1.0 (Beta - 2026-05-15):
+- Added Watchlist notification when a watched farmland's negotiation cooldown ends
+
 ## 0.6.0.0 (Beta - 2026-05-09):
 - Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
 - Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)

@@ -14,7 +14,7 @@ In vanilla FS25, all unowned farmlands are always available at a static price - 
 - **Limited field availability** - only a subset of fields are for sale at any time, rotating daily with seasonal variation (more listings Nov-Mar)
 - **Five difficulty presets** - Easy, Normal, Hard, Harder, and Realistic - or turn availability off entirely
 - **Adjustable base price per hectare** - set a custom base farmland price per hectare from the settings
-- **Watchlist** - track farmlands you are interested in and get notified when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
+- **Watchlist** - track farmlands you are interested in and get notified when a watched farmland goes up for sale or its negotiation cooldown ends; persists across save/load and isolates per-farm in multiplayer
 - **Map color coding** - for-sale and not-for-sale fields are color-coded on the farmland map with a matching legend, with a color-blind palette that activates when the game's color-blind mode is enabled
 - **Game Settings integration** - all settings accessible from the in-game settings menu
 
