@@ -671,6 +671,119 @@ function RmWatchlistUI.notifyForSaleTransitions(transitions)
 end
 
 -- ============================================================================
+-- COOLDOWN-EXPIRY NOTIFICATION
+--
+-- Fired from RmCooldownExpiryEvent:run (clients) AND directly from
+-- RmNegotiationManager.onPeriodChanged for the host (broadcastEvent skips
+-- the host loopback). The incoming list carries {farmId, farmlandId} pairs
+-- for every cooldown that just hit zero. Each client filters to its own
+-- farm, then to watched + still-eligible, dedupes, sorts, formats once,
+-- and calls showInGameMessage once. Non-committal copy ("Cooldown ended on
+-- {farmland}") stays truthful even if settings drifted between the
+-- cooldown being set and now.
+-- ============================================================================
+
+--- Format the cooldown-ended HUD body from a built-items list (post-filter,
+--- post-name-resolution, post-sort). Pure function. Mirrors _formatMessage's
+--- single / batched / overflow-cap structure but with non-committal copy.
+---@param items table[] list of {id, name}; assumed sorted by id ascending
+---@return string title, string body
+function RmWatchlistUI._formatCooldownMessage(items)
+    local title = (g_i18n ~= nil and g_i18n.getText)
+        and g_i18n:getText("rm_fm_watchlist_cooldown_ended_title")
+        or "Watchlist update"
+
+    if #items == 1 then
+        local fmt = (g_i18n ~= nil and g_i18n.getText)
+            and g_i18n:getText("rm_fm_watchlist_cooldown_ended_single")
+            or "Cooldown ended on %s"
+        return title, string.format(fmt, items[1].name)
+    end
+
+    local count = #items
+    local names = {}
+    local cap = math.min(count, FOR_SALE_OVERFLOW_CAP)
+    for i = 1, cap do
+        names[i] = items[i].name
+    end
+    local nameList = table.concat(names, ", ")
+    if count > FOR_SALE_OVERFLOW_CAP then
+        local overflowFmt = (g_i18n ~= nil and g_i18n.getText)
+            and g_i18n:getText("rm_fm_watchlist_now_for_sale_overflow_suffix")
+            or ", and %d more"
+        nameList = nameList .. string.format(overflowFmt, count - FOR_SALE_OVERFLOW_CAP)
+    end
+    local fmt = (g_i18n ~= nil and g_i18n.getText)
+        and g_i18n:getText("rm_fm_watchlist_cooldown_ended_batched")
+        or "Cooldown ended on %d watched farmlands: %s"
+    return title, string.format(fmt, count, nameList)
+end
+
+--- Main entry point. Takes raw expiries (farmId + farmlandId from the period-
+--- change site), filters to local farm + watched + still-eligible, resolves
+--- names, sorts by id ascending, formats, and calls showInGameMessage once.
+--- Silent no-op when there is no HUD (dedicated server, mid-teardown), when
+--- the local farmId is unresolved, or when no entries survive filtering.
+---@param expiries table[] list of {farmId=number, farmlandId=number}
+function RmWatchlistUI.notifyCooldownExpiries(expiries)
+    if expiries == nil or #expiries == 0 then
+        Log:debug("notifyCooldownExpiries: empty input, silent return")
+        return
+    end
+    if g_currentMission == nil or g_currentMission.hud == nil
+        or g_currentMission.hud.showInGameMessage == nil then
+        Log:debug("notifyCooldownExpiries: HUD unavailable, silent return")
+        return
+    end
+
+    local localFarmId = RmWatchlistUI._localFarmId()
+    if localFarmId == nil then
+        Log:debug("notifyCooldownExpiries: local farmId unresolved, silent return")
+        return
+    end
+    local farmlands = g_farmlandManager and g_farmlandManager:getFarmlands() or nil
+
+    -- Dedupe by farmlandId: the same id could in theory appear twice in the
+    -- payload (caller bug / future change). Single message with each id once.
+    local items = {}
+    local seen = {}
+    for _, e in ipairs(expiries) do
+        if e.farmId == localFarmId and not seen[e.farmlandId]
+            and RmWatchlistUI.isWatched(e.farmlandId) then
+            local farmland = farmlands and farmlands[e.farmlandId] or nil
+            -- isEligibleForAvailability already enforces NO_OWNER, which
+            -- covers "not owned by local farm" (and indeed any owner). The
+            -- check is defensive: onOwnershipChanged clears cooldowns, so
+            -- a still-watched-and-now-owned farmland here is a race window.
+            if type(farmland) == "table"
+                and RmFmAvailability.isEligibleForAvailability(farmland) then
+                local name = RmWatchlistUI._resolveFarmlandName(e.farmlandId)
+                if name ~= nil then
+                    seen[e.farmlandId] = true
+                    table.insert(items, { id = e.farmlandId, name = name })
+                else
+                    Log:debug("notifyCooldownExpiries: dropping farmlandId=%d, name unresolved",
+                        e.farmlandId)
+                end
+            end
+        end
+    end
+
+    if #items == 0 then
+        Log:debug("notifyCooldownExpiries: no survivors after filter (input=%d)",
+            #expiries)
+        return
+    end
+
+    table.sort(items, function(a, b) return a.id < b.id end)
+
+    local title, body = RmWatchlistUI._formatCooldownMessage(items)
+    g_currentMission.hud:showInGameMessage(title, body, -1, nil, nil, nil)
+    Log:info("WATCHLIST: notified %d cooldown-expir%s",
+        #items, #items == 1 and "y" or "ies")
+end
+
+-- ============================================================================
 -- ACTION-MENU TOGGLE (Add to watchlist / Remove from watchlist)
 --
 -- Registration: contextActions is iterated with ipairs, so only contiguous

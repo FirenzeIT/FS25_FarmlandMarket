@@ -47,7 +47,7 @@ RmNegotiationManager.COOLDOWNS = {
 -- STATE TABLES (module-level, server-only)
 -- =============================================================================
 
--- One active session per farm (farmId → session)
+-- One active session per farm (farmId -> session)
 RmNegotiationManager.sessions = {}
 
 -- Cooldowns: [farmlandId][farmId] = { remaining=N, lastOutcome=string }
@@ -69,7 +69,7 @@ RmNegotiationManager.loadingFromSavegame = false
 -- INTERNAL HELPERS (local)
 -- =============================================================================
 
---- Returns current preset name from settings. "off" → "normal" for engine compatibility.
+--- Returns current preset name from settings. "off" -> "normal" for engine compatibility.
 ---@return string preset
 local function getPreset()
     local preset = RmFmSettings.getPresetName()
@@ -95,7 +95,7 @@ local function getFarmIdForConnection(connection)
     return player.farmId
 end
 
---- Maps mode + outcome → cooldown table key.
+--- Maps mode + outcome -> cooldown table key.
 ---@param mode string
 ---@param outcome string
 ---@return string|nil key
@@ -806,23 +806,66 @@ end
 -- PERIOD CHANGE HANDLER
 -- =============================================================================
 
-function RmNegotiationManager.onPeriodChanged()
-    if g_server == nil then return end
-    local expired = 0
-    for farmlandId, farms in pairs(RmNegotiationManager.cooldowns) do
+--- Decrement every cooldown by one period, remove entries that reach zero,
+--- and return the list of removed entries. Pure-ish helper: mutates the
+--- input table in place, returns its observable side-effect so callers can
+--- broadcast / notify without re-scanning.
+---
+--- Cleans up empty per-farmland sub-tables so subsequent calls don't walk
+--- dead branches. Returned list is unsorted; callers sort if they need
+--- determinism (RmCooldownExpiryEvent.new does the sort).
+---
+---@param cooldownsTable table {[farmlandId] = {[farmId] = {remaining, lastOutcome}}}
+---@return table[] expiries list of { farmId=number, farmlandId=number }
+function RmNegotiationManager.collectExpiredCooldowns(cooldownsTable)
+    local expiries = {}
+    if type(cooldownsTable) ~= "table" then return expiries end
+    for farmlandId, farms in pairs(cooldownsTable) do
         for farmId, cd in pairs(farms) do
-            cd.remaining = cd.remaining - 1
-            if cd.remaining <= 0 then
+            -- Defensive type guard: a corrupt savegame or migration bug could
+            -- persist a non-numeric `remaining`. Subtracting on a non-number
+            -- would error and abort the whole tick, dropping every other
+            -- farmland's expiry. Treat as immediately-expired and drop.
+            if type(cd) ~= "table" or type(cd.remaining) ~= "number" then
+                Log:warning("COOLDOWN: dropping malformed cooldown entry farmland=%s farm=%s",
+                    tostring(farmlandId), tostring(farmId))
                 farms[farmId] = nil
-                expired = expired + 1
+                table.insert(expiries, { farmId = farmId, farmlandId = farmlandId })
+            else
+                cd.remaining = cd.remaining - 1
+                if cd.remaining <= 0 then
+                    farms[farmId] = nil
+                    table.insert(expiries, { farmId = farmId, farmlandId = farmlandId })
+                end
             end
         end
         if next(farms) == nil then
-            RmNegotiationManager.cooldowns[farmlandId] = nil
+            cooldownsTable[farmlandId] = nil
         end
     end
+    return expiries
+end
+
+function RmNegotiationManager.onPeriodChanged()
+    if g_server == nil then return end
+    local expiries = RmNegotiationManager.collectExpiredCooldowns(
+        RmNegotiationManager.cooldowns)
+    local expired = #expiries
     if expired > 0 then
         Log:debug("COOLDOWN: %d cooldowns expired on period change", expired)
+        -- Construct the event once so both the broadcast and the host-local
+        -- notify operate on the SAME validated, sorted list. Avoids any
+        -- chance of host/client divergence on malformed entries.
+        local event = RmCooldownExpiryEvent.new(expiries)
+        g_server:broadcastEvent(event)
+        -- broadcastEvent defaults sendLocal=false so the host loopback is
+        -- skipped; mirror the for-sale path by calling notifyCooldownExpiries
+        -- inline for the host. Gate on g_dedicatedServer for parity with
+        -- RmFarmlandMarket.onDayChanged - no local farm on dedi, so any HUD
+        -- call would be wasted work.
+        if not g_dedicatedServer then
+            RmWatchlistUI.notifyCooldownExpiries(event.expiries)
+        end
     end
 
     -- Safety net: clear any stale pendingDeals (should be empty, but defensive)

@@ -36,6 +36,7 @@ source(modDirectory .. "scripts/events/RmNegotiationRequestEvent.lua")
 source(modDirectory .. "scripts/events/RmNegotiationResultEvent.lua")
 source(modDirectory .. "scripts/events/RmWatchlistSyncEvent.lua")
 source(modDirectory .. "scripts/events/RmWatchlistToggleEvent.lua")
+source(modDirectory .. "scripts/events/RmCooldownExpiryEvent.lua")
 
 -- =============================================================================
 -- CORE

@@ -107,5 +107,8 @@
         <text name="rm_fm_watchlist_now_for_sale_single_no_price" text="%s is now for sale"/>
         <text name="rm_fm_watchlist_now_for_sale_batched" text="%d watched farmlands are now for sale: %s"/>
         <text name="rm_fm_watchlist_now_for_sale_overflow_suffix" text=", and %d more"/>
+        <text name="rm_fm_watchlist_cooldown_ended_title" text="Farmland watchlist update"/>
+        <text name="rm_fm_watchlist_cooldown_ended_single" text="Cooldown ended on %s"/>
+        <text name="rm_fm_watchlist_cooldown_ended_batched" text="Cooldown ended on %d watched farmlands: %s"/>
     </texts>
 </l10n>
