@@ -215,11 +215,19 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
     Log:trace(">>> FarmlandStateEvent:run(farmlandId=%d)", self.id)
 
     -- Bypass: negotiated deal in progress - skip availability check.
-    -- Don't clear pendingDeals here: on listen servers the event fires twice
-    -- (server processing + broadcast back to host-as-client). Cleared in onOwnershipChanged.
     if RmNegotiationManager.pendingDeals[self.id] then
         Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass availability)", self.id)
         superFunc(self, connection)
+        -- Clear the flag on the authoritative server-inbound run. The base server-inbound run can
+        -- early-return without transferring (a mission is running, no/denied player, insufficient
+        -- funds, or the field is no longer unowned); in those cases setLandOwnership - hence
+        -- onOwnershipChanged, the usual clearer - never fires, so clear here regardless of transfer.
+        -- Gating on `not connection:getIsServer()` leaves the nested listen-server loopback apply
+        -- pass (getIsServer()==true, which still sees the flag and clears it via onOwnershipChanged
+        -- while running superFunc -> setLandOwnership for the live PDA refresh, per FM-68) untouched.
+        if not connection:getIsServer() then
+            RmNegotiationManager.pendingDeals[self.id] = nil
+        end
         Log:trace("<<< FarmlandStateEvent:run() [negotiated deal]")
         return
     end
