@@ -345,13 +345,22 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
         valueEl:setText(g_i18n:getText("rm_fm_notForSale"))
     end
 
-    -- Cooldown display (server only - clients get error on attempt)
+    -- Cooldown display (server only - clients get error on attempt).
+    -- formatCooldownRemaining owns the single EPSILON liveness gate and the
+    -- day/month unit choice, and returns nil when the cooldown is expired.
     if g_server ~= nil and RmFmSettings.isAnyNegotiationEnabled() then
         local playerFarmId = g_currentMission:getFarmId()
         local cooldownInfo = RmNegotiationManager.getCooldownInfo(farmlandId, playerFarmId)
-        if cooldownInfo ~= nil and cooldownInfo.remaining > 0 then
-            valueEl:setText(valueEl:getText() .. "\n" .. string.format(
-                g_i18n:getText("rm_fm_neg_cooldownDisplay"), cooldownInfo.remaining))
+        if cooldownInfo ~= nil then
+            -- A cooldown on land the player OWNS is a sell/relist cooldown; on
+            -- unowned land it is a buy cooldown (ownership change clears a
+            -- farmland's cooldowns, so no buy cooldown lingers onto owned land).
+            -- So isOwned selects the correct buy-vs-sell display variant.
+            local cooldownText = RmNegotiationManager.formatCooldownRemaining(
+                cooldownInfo.remaining, isOwned, nil)
+            if cooldownText ~= nil then
+                valueEl:setText(valueEl:getText() .. "\n" .. cooldownText)
+            end
         end
     end
 end
@@ -998,7 +1007,7 @@ function RmFarmlandMarket.registerXmlSchema()
     schema:register(XMLValueType.FLOAT, negPath .. ".sellerProfile#rejectFloor", "Reject floor price")
     local cdPath = negPath .. ".cooldown(?)"
     schema:register(XMLValueType.INT, cdPath .. "#farmId", "Farm ID")
-    schema:register(XMLValueType.INT, cdPath .. "#remaining", "Remaining cooldown periods")
+    schema:register(XMLValueType.FLOAT, cdPath .. "#remaining", "Remaining cooldown periods (fractional; ticks 1/daysPerPeriod per day)")
     schema:register(XMLValueType.STRING, cdPath .. "#lastOutcome", "Last negotiation outcome")
 
     -- Watchlist: per-farm sets of farmlandIds the player is watching.

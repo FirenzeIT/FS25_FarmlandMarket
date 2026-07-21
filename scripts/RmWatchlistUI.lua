@@ -674,9 +674,9 @@ end
 -- COOLDOWN-EXPIRY NOTIFICATION
 --
 -- Fired from RmCooldownExpiryEvent:run (clients) AND directly from
--- RmNegotiationManager.onPeriodChanged for the host (broadcastEvent skips
+-- RmNegotiationManager.onDayChanged for the host (broadcastEvent skips
 -- the host loopback). The incoming list carries {farmId, farmlandId} pairs
--- for every cooldown that just hit zero. Each client filters to its own
+-- for every cooldown that just reached expiry. Each client filters to its own
 -- farm, then to watched + still-eligible, dedupes, sorts, formats once,
 -- and calls showInGameMessage once. Non-committal copy ("Cooldown ended on
 -- {farmland}") stays truthful even if settings drifted between the

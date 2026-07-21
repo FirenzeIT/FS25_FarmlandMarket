@@ -4,7 +4,7 @@
 
     Manages:
     - One active negotiation session per farm
-    - Period-based cooldowns after failed negotiations
+    - Fractional-period cooldowns after failed negotiations (tick per day)
     - Farmland locks for multiplayer exclusivity
     - Cached seller profiles for listed farmlands
     - Host/client routing via network events
@@ -23,6 +23,15 @@
 RmNegotiationManager = {}
 
 local Log = RmLogging.getLogger("FarmlandMarket")
+
+-- Cooldown liveness threshold. `remaining` is now a fractional period count
+-- (decremented by 1/daysPerPeriod per day). A single EPSILON is used at EVERY
+-- liveness gate - the tick's expiry, canNegotiate, the display helper, and the
+-- save/load gates - so a near-zero float residue expires everywhere at once
+-- instead of surviving as an immortal micro-cooldown. 1e-6 dominates the worst
+-- float summation drift of a non-power-of-two daysPerPeriod (~1e-14), keeping
+-- integer-period parity exact in practice.
+local EPSILON = 1e-6
 
 -- Additional outcome constant (engine has no walkaway outcome)
 RmNegotiationManager.OUTCOME_WALKAWAY = "walkaway"
@@ -143,7 +152,7 @@ local function applyCooldown(farmlandId, farmId, mode, outcome)
         remaining = remaining,
         lastOutcome = outcome,
     }
-    Log:debug("COOLDOWN: farmland %d farm %d = %d periods (%s)", farmlandId, farmId, remaining, outcome)
+    Log:debug("COOLDOWN: farmland %d farm %d = %.2f periods (%s)", farmlandId, farmId, remaining, outcome)
 end
 
 --- Builds sanitized snapshot (public function for testing).
@@ -240,8 +249,8 @@ function RmNegotiationManager.canNegotiate(farmlandId, farmId)
     end
     -- 3. Cooldown check
     local cdFarmland = RmNegotiationManager.cooldowns[farmlandId]
-    if cdFarmland ~= nil and cdFarmland[farmId] ~= nil and cdFarmland[farmId].remaining > 0 then
-        Log:trace("<<< canNegotiate = false (cooldown %d periods)", cdFarmland[farmId].remaining)
+    if cdFarmland ~= nil and cdFarmland[farmId] ~= nil and cdFarmland[farmId].remaining > EPSILON then
+        Log:trace("<<< canNegotiate = false (cooldown %.2f periods)", cdFarmland[farmId].remaining)
         return false, "cooldown"
     end
     Log:trace("<<< canNegotiate = true")
@@ -802,24 +811,56 @@ function RmNegotiationManager.getCooldownInfo(farmlandId, farmId)
     return RmNegotiationManager.cooldowns[farmlandId][farmId]
 end
 
+--- Formats a cooldown's remaining time as a localized, player-facing string:
+--- whole months (ceil periods) when >= 1 period remains, otherwise whole days
+--- (ceil of remaining * daysPerPeriod, floored at 1 - the daily tick is the
+--- finest resolution). Returns nil when the cooldown is expired (<= EPSILON) so
+--- callers fall through to the generic "try again later" text / suppress the
+--- line. Single display seam shared by the map tooltip and the error path.
+---@param remaining number|nil fractional period count
+---@param isSell boolean sell-side (relist) message variant when true
+---@param daysPerPeriod number|nil injected for test determinism; falls back to the game environment
+---@return string|nil message localized string, or nil if expired
+function RmNegotiationManager.formatCooldownRemaining(remaining, isSell, daysPerPeriod)
+    if remaining == nil or remaining <= EPSILON then return nil end
+    local env = g_currentMission and g_currentMission.environment
+    local dpp = daysPerPeriod or (env and env.daysPerPeriod) or 1
+    if type(dpp) ~= "number" or dpp <= 0 then dpp = 1 end
+    if remaining >= 1 then
+        local key = isSell and "rm_fm_neg_cooldownSellDisplay" or "rm_fm_neg_cooldownDisplay"
+        return string.format(g_i18n:getText(key), math.ceil(remaining))  -- whole months
+    end
+    local key = isSell and "rm_fm_neg_cooldownSellDaysDisplay" or "rm_fm_neg_cooldownDaysDisplay"
+    return string.format(g_i18n:getText(key), math.max(1, math.ceil(remaining * dpp)))  -- whole days
+end
+
 -- =============================================================================
--- PERIOD CHANGE HANDLER
+-- DAY CHANGE HANDLER
 -- =============================================================================
 
---- Decrement every cooldown by one period, remove entries that reach zero,
---- and return the list of removed entries. Pure-ish helper: mutates the
---- input table in place, returns its observable side-effect so callers can
---- broadcast / notify without re-scanning.
+--- Decrement every cooldown by `step` periods, remove entries that reach the
+--- expiry threshold (`remaining <= EPSILON`), and return the list of removed
+--- entries. Pure-ish helper: mutates the input table in place, returns its
+--- observable side-effect so callers can broadcast / notify without re-scanning.
+---
+--- `step` is a fraction of a period (`1/daysPerPeriod` from the daily tick), so
+--- a full period of day-ticks nets exactly `-1.0` and existing integer cooldowns
+--- keep the same period count. Contract: `step` must be a positive number; a
+--- non-number or `<= 0` is treated as `1` (period-equivalent). The production
+--- tick (`onDayChanged`) MUST pass the computed fraction - a silent default here
+--- would decrement a whole period per day (daysPerPeriod-times too fast).
 ---
 --- Cleans up empty per-farmland sub-tables so subsequent calls don't walk
 --- dead branches. Returned list is unsorted; callers sort if they need
 --- determinism (RmCooldownExpiryEvent.new does the sort).
 ---
 ---@param cooldownsTable table {[farmlandId] = {[farmId] = {remaining, lastOutcome}}}
+---@param step number|nil period-fraction to subtract per call; invalid/<=0 -> 1
 ---@return table[] expiries list of { farmId=number, farmlandId=number }
-function RmNegotiationManager.collectExpiredCooldowns(cooldownsTable)
+function RmNegotiationManager.collectExpiredCooldowns(cooldownsTable, step)
     local expiries = {}
     if type(cooldownsTable) ~= "table" then return expiries end
+    if type(step) ~= "number" or step <= 0 then step = 1 end
     for farmlandId, farms in pairs(cooldownsTable) do
         for farmId, cd in pairs(farms) do
             -- Defensive type guard: a corrupt savegame or migration bug could
@@ -832,8 +873,8 @@ function RmNegotiationManager.collectExpiredCooldowns(cooldownsTable)
                 farms[farmId] = nil
                 table.insert(expiries, { farmId = farmId, farmlandId = farmlandId })
             else
-                cd.remaining = cd.remaining - 1
-                if cd.remaining <= 0 then
+                cd.remaining = cd.remaining - step
+                if cd.remaining <= EPSILON then
                     farms[farmId] = nil
                     table.insert(expiries, { farmId = farmId, farmlandId = farmlandId })
                 end
@@ -846,13 +887,28 @@ function RmNegotiationManager.collectExpiredCooldowns(cooldownsTable)
     return expiries
 end
 
-function RmNegotiationManager.onPeriodChanged()
+function RmNegotiationManager.onDayChanged()
     if g_server == nil then return end
+    -- Tick each cooldown by 1/daysPerPeriod so a full period nets exactly -1.0
+    -- and integer cooldowns keep their period count, while sub-period values
+    -- expire mid-period. Guard a nil/degenerate daysPerPeriod (fall back to a
+    -- period-equivalent step of 1 - never divide by zero). The fraction MUST be
+    -- passed explicitly; collectExpiredCooldowns's default would tick a whole
+    -- period per day.
+    local env = g_currentMission and g_currentMission.environment
+    local dpp = env and env.daysPerPeriod
+    local step
+    if type(dpp) ~= "number" or dpp <= 0 then
+        Log:debug("COOLDOWN: daysPerPeriod invalid (%s), using period-equivalent step=1", tostring(dpp))
+        step = 1
+    else
+        step = 1 / dpp
+    end
     local expiries = RmNegotiationManager.collectExpiredCooldowns(
-        RmNegotiationManager.cooldowns)
+        RmNegotiationManager.cooldowns, step)
     local expired = #expiries
     if expired > 0 then
-        Log:debug("COOLDOWN: %d cooldowns expired on period change", expired)
+        Log:debug("COOLDOWN: %d cooldowns expired on day change (step=%.4f)", expired, step)
         -- Construct the event once so both the broadcast and the host-local
         -- notify operate on the SAME validated, sorted list. Avoids any
         -- chance of host/client divergence on malformed entries.
@@ -974,8 +1030,9 @@ function RmNegotiationManager.initialize()
         Log:trace("<<< initialize() [not server]")
         return
     end
-    -- Subscribe to period changes
-    g_messageCenter:subscribe(MessageType.PERIOD_CHANGED, RmNegotiationManager.onPeriodChanged, RmNegotiationManager)
+    -- Subscribe to day changes (cooldowns tick fractionally per day; a full
+    -- period still nets -1.0 - see onDayChanged)
+    g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmNegotiationManager.onDayChanged, RmNegotiationManager)
     -- Register console commands
     addConsoleCommand("fmNegotiate", "Start negotiation on farmland (fmNegotiate <farmlandId>)",
         "consoleStartNegotiation", RmNegotiationManager)
@@ -1000,8 +1057,8 @@ end
 --- Cleanup manager (called from BaseMission.delete)
 function RmNegotiationManager.cleanup()
     Log:trace(">>> RmNegotiationManager.cleanup()")
-    -- Unsubscribe from period changes
-    g_messageCenter:unsubscribe(MessageType.PERIOD_CHANGED, RmNegotiationManager)
+    -- Unsubscribe from day changes
+    g_messageCenter:unsubscribe(MessageType.DAY_CHANGED, RmNegotiationManager)
     -- Remove console commands
     removeConsoleCommand("fmNegotiate")
     removeConsoleCommand("fmSell")
@@ -1073,7 +1130,7 @@ function RmNegotiationManager.saveToXMLFile(xmlFile)
         if farms ~= nil then
             local j = 0
             for farmId, cd in pairs(farms) do
-                if cd.remaining > 0 then
+                if cd.remaining > EPSILON then
                     local cdKey = string.format("%s.cooldown(%d)", entryKey, j)
                     xmlFile:setValue(cdKey .. "#farmId", farmId)
                     xmlFile:setValue(cdKey .. "#remaining", cd.remaining)
@@ -1178,8 +1235,8 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                     local remaining = xmlFile:getValue(cdKey .. "#remaining")
                     local lastOutcome = xmlFile:getValue(cdKey .. "#lastOutcome")
 
-                    -- Skip expired cooldowns
-                    if farmId ~= nil and remaining ~= nil and remaining > 0 then
+                    -- Skip expired cooldowns (near-zero residue treated as gone)
+                    if farmId ~= nil and remaining ~= nil and remaining > EPSILON then
                         if RmNegotiationManager.cooldowns[farmlandId] == nil then
                             RmNegotiationManager.cooldowns[farmlandId] = {}
                         end
@@ -1188,7 +1245,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                             lastOutcome = lastOutcome,
                         }
                         cooldownCount = cooldownCount + 1
-                        Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%d outcome=%s",
+                        Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%.2f outcome=%s",
                             farmlandId, farmId, remaining, tostring(lastOutcome))
                     end
                 end
@@ -1384,7 +1441,7 @@ function RmNegotiationManager:consoleCooldowns()
     local count = 0
     for farmlandId, farms in pairs(RmNegotiationManager.cooldowns) do
         for farmId, cd in pairs(farms) do
-            table.insert(parts, string.format("  Farmland %d / Farm %d: %d periods remaining (%s)",
+            table.insert(parts, string.format("  Farmland %d / Farm %d: %.2f periods remaining (%s)",
                 farmlandId, farmId, cd.remaining, cd.lastOutcome))
             count = count + 1
         end

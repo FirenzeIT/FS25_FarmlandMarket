@@ -367,8 +367,10 @@ function RmNegotiationUI.getErrorMessage(errorReason)
         local info = RmNegotiationManager.getCooldownInfo(
             RmNegotiationUI.currentFarmlandId, RmNegotiationUI.currentFarmId)
         if info then
-            local key = isSell and "rm_fm_neg_cooldownSellDisplay" or "rm_fm_neg_cooldownDisplay"
-            return string.format(g_i18n:getText(key), info.remaining)
+            -- Shared display seam: whole days (< 1 period) or whole months,
+            -- nil when expired (fall through to the generic message).
+            local msg = RmNegotiationManager.formatCooldownRemaining(info.remaining, isSell, nil)
+            if msg ~= nil then return msg end
         end
         local key = isSell and "rm_fm_neg_cooldownSell" or "rm_fm_neg_cooldown"
         return g_i18n:getText(key)

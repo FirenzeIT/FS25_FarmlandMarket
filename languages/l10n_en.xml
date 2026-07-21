@@ -70,8 +70,10 @@
         <text name="rm_fm_neg_offerNotHigher" text="You must offer more than your previous bid."/>
         <text name="rm_fm_neg_askNotLower" text="You must ask less than your previous asking price."/>
         <text name="rm_fm_neg_cooldownDisplay" text="The owner is not interested in negotiating right now. Try again in %d month(s)."/>
+        <text name="rm_fm_neg_cooldownDaysDisplay" text="The owner is not interested in negotiating right now. Try again in %d day(s)."/>
         <text name="rm_fm_neg_cooldownSell" text="You cannot relist this field right now. Try again later."/>
         <text name="rm_fm_neg_cooldownSellDisplay" text="You cannot relist this field right now. Try again in %d month(s)."/>
+        <text name="rm_fm_neg_cooldownSellDaysDisplay" text="You cannot relist this field right now. Try again in %d day(s)."/>
         <text name="rm_fm_neg_submit" text="Submit"/>
         <text name="rm_fm_neg_continue" text="Continue"/>
         <text name="rm_fm_neg_accept" text="Accept"/>

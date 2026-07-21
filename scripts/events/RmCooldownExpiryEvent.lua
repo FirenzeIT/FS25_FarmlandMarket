@@ -1,7 +1,8 @@
 --[[
     RmCooldownExpiryEvent.lua
     Server -> all clients. Carries the list of {farmId, farmlandId} pairs whose
-    negotiation cooldowns reached zero on the current PERIOD_CHANGED tick.
+    negotiation cooldowns reached zero on the current DAY_CHANGED tick
+    (cooldowns tick fractionally per day, so expiry can land on any day).
 
     Server-authoritative: clients receiving server-side run() reject.
 
