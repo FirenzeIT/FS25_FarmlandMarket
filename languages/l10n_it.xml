@@ -110,5 +110,8 @@
         <text name="rm_fm_watchlist_cooldown_ended_title" text="Aggiornamento lista osservati terreni agricoli"/>
         <text name="rm_fm_watchlist_cooldown_ended_single" text="Tempo di attesa terminato per %s"/>
         <text name="rm_fm_watchlist_cooldown_ended_batched" text="Tempo di attesa terminato per %d terreni agricoli osservati: %s"/>
+        <!-- Italian (English fallback) -->
+        <text name="rm_fm_neg_cooldownDaysDisplay" text="The owner is not interested in negotiating right now. Try again in %d day(s)."/>
+        <text name="rm_fm_neg_cooldownSellDaysDisplay" text="You cannot relist this field right now. Try again in %d day(s)."/>
     </texts>
 </l10n>
