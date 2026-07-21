@@ -1,6 +1,6 @@
 --[[
     RmNegotiationRequestEvent.lua
-    Client → host: negotiation action request.
+    Client -> host: negotiation action request.
 
     Actions: start_listed, start_unlisted, start_sell, offer, ask, walkaway, respond, cancel
 
@@ -31,7 +31,7 @@ end
 ---@param actionType string "start_listed"|"start_unlisted"|"start_sell"|"offer"|"ask"|"walkaway"|"respond"|"cancel"
 ---@param farmlandId number For start actions (0 otherwise)
 ---@param amount number For offer/ask (0 otherwise)
----@param accept boolean For respond (false otherwise)
+---@param accept boolean Action-dependent: acceptance for "respond"; doubles as `userInitiated` for "cancel" (true only for the explicit sell Walk Away). false otherwise.
 ---@param strategy string For start_sell ("" otherwise)
 ---@return table event
 function RmNegotiationRequestEvent.new(actionType, farmlandId, amount, accept, strategy)
@@ -114,7 +114,8 @@ function RmNegotiationRequestEvent:run(connection)
     elseif action == "respond" then
         snapshot, errorReason = RmNegotiationManager.respondToProposal(farmId, self.accept)
     elseif action == "cancel" then
-        RmNegotiationManager.cancelSession(farmId)
+        -- `accept` doubles as userInitiated for cancel (true only for sell Walk Away).
+        RmNegotiationManager.cancelSession(farmId, self.accept)
         snapshot = nil
         errorReason = nil
     else

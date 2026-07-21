@@ -33,8 +33,11 @@ local Log = RmLogging.getLogger("FarmlandMarket")
 -- integer-period parity exact in practice.
 local EPSILON = 1e-6
 
--- Additional outcome constant (engine has no walkaway outcome)
+-- Additional outcome constants (engine has no walkaway/cancelled outcome)
 RmNegotiationManager.OUTCOME_WALKAWAY = "walkaway"
+-- User-initiated sell abandonment (the explicit "Walk Away" affordance). Maps to
+-- selling_cancel only under MODE_SELL; other modes resolve no key (no-op cooldown).
+RmNegotiationManager.OUTCOME_CANCELLED = "cancelled"
 
 -- =============================================================================
 -- COOLDOWN PARAMETER TABLE (with walkaway additions)
@@ -50,6 +53,10 @@ RmNegotiationManager.COOLDOWNS = {
     unlisted_walkaway    = { easy = 1, normal = 2, hard = 2, harder = 3, realistic = 4 },
     selling_npc_walked   = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
     selling_walkaway     = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
+    -- Flat sub-period re-list cooldown when the player deliberately walks away from a
+    -- sell negotiation (FM-12). Milder than a month (the player owns the land), but
+    -- enough to stop re-rolling the NPC opening bid. Fractional via FM-15's FLOAT tick.
+    selling_cancel       = { easy = 0.2, normal = 0.2, hard = 0.2, harder = 0.2, realistic = 0.2 },
 }
 
 -- =============================================================================
@@ -126,6 +133,7 @@ local function getOutcomeCooldownKey(mode, outcome)
         [ENGINE.MODE_SELL] = {
             [ENGINE.OUTCOME_NPC_WALKED] = "selling_npc_walked",
             [MGR.OUTCOME_WALKAWAY]      = "selling_walkaway",
+            [MGR.OUTCOME_CANCELLED]     = "selling_cancel",
         },
     }
     local modeMap = map[mode]
@@ -781,17 +789,30 @@ function RmNegotiationManager.respondToProposal(farmId, accept)
     end
 end
 
---- Cancel session without cooldown.
+--- Cancel session. A user-initiated sell abandonment (the explicit "Walk Away"
+--- affordance) applies the outcome-mapped cooldown (sell -> selling_cancel; other
+--- modes resolve no cancel key, so applyCooldown is a safe no-op). Every other
+--- caller (internal stale-session cancel, map-frame-close, console) defaults to
+--- userInitiated=false and keeps the historic no-cooldown behavior.
+--- The session==nil early-return MUST precede applyCooldown so a stale/duplicate
+--- cancel (e.g. an MP client cancel arriving after the session is gone) can never
+--- write a cooldown with no session.
 ---@param farmId number
+---@param userInitiated boolean|nil true only for the explicit sell Walk Away
 ---@return boolean success
-function RmNegotiationManager.cancelSession(farmId)
+function RmNegotiationManager.cancelSession(farmId, userInitiated)
     local session = RmNegotiationManager.sessions[farmId]
     if session == nil then return false end
+    -- Charge the sell re-list cooldown only on a deliberate walk-away, before the
+    -- session is torn down (buy modes map no cancel key -> applyCooldown no-op).
+    if userInitiated then
+        applyCooldown(session.farmlandId, farmId, session.mode, RmNegotiationManager.OUTCOME_CANCELLED)
+    end
     -- Release lock
     RmNegotiationManager.locks[session.farmlandId] = nil
-    -- Clear session (no cooldown)
+    -- Clear session
     RmNegotiationManager.sessions[farmId] = nil
-    Log:debug("NEGOTIATION: Cancelled session for farm %d", farmId)
+    Log:debug("NEGOTIATION: Cancelled session for farm %d (userInitiated=%s)", farmId, tostring(userInitiated))
     return true
 end
 

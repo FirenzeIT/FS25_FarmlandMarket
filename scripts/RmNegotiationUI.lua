@@ -122,13 +122,18 @@ end
 
 --- Send cancel request to server (fire-and-forget).
 --- On host, cancels directly. On client, sends event for server-side lock/session cleanup.
+--- `userInitiated` is true only for the explicit sell "Walk Away" affordance; it rides
+--- the cancel event's `accept` slot (no wire change) and triggers the selling_cancel
+--- cooldown server-side. All other callers omit it (default no-cooldown cleanup).
 ---@param farmId number
-local function sendCancelToServer(farmId)
+---@param userInitiated boolean|nil
+local function sendCancelToServer(farmId, userInitiated)
+    userInitiated = userInitiated == true  -- normalize once so host and client agree
     if g_server ~= nil then
-        RmNegotiationManager.cancelSession(farmId)
+        RmNegotiationManager.cancelSession(farmId, userInitiated)
     elseif g_client ~= nil then
         g_client:getServerConnection():sendEvent(
-            RmNegotiationRequestEvent.new("cancel", 0, 0, false, "")
+            RmNegotiationRequestEvent.new("cancel", 0, 0, userInitiated, "")
         )
     end
 end
@@ -295,8 +300,10 @@ setupDialogCallbacks = function(dialog)
 
     dialog.onWalkAway = function()
         if mode == RmNegotiationEngine.MODE_SELL then
-            -- Sell mode: cancel without cooldown (fire-and-forget to server)
-            sendCancelToServer(farmId)
+            -- Sell mode: deliberate walk-away -> immediate abort + light selling_cancel
+            -- re-list cooldown (FM-12). userInitiated=true is passed ONLY here; the
+            -- shared dialog back/ESC reaches this same path via onClickBottomBar.
+            sendCancelToServer(farmId, true)
             dialog:close()
             RmNegotiationUI.clearState()
         else
