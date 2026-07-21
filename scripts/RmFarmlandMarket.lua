@@ -224,8 +224,11 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
         return
     end
 
-    -- Check availability (server receiving from client)
-    if connection:getIsServer() and RmFmSettings.isAvailabilityEnabled() then
+    -- Availability gate: enforce only on the server-inbound run (authoritative rejection).
+    -- In run(), connection:getIsServer()==false means the server is receiving this from a
+    -- client; ==true is an apply node (buyer, bystanders, server loopback) that must still
+    -- reach superFunc so setLandOwnership refreshes ownership and the PDA/map overlay live.
+    if not connection:getIsServer() and RmFmSettings.isAvailabilityEnabled() then
         if not RmFmAvailability.isForSale(self.id) then
             Log:warning("Purchase rejected: farmland %d not available for sale", self.id)
             Log:trace("<<< FarmlandStateEvent:run() [rejected]")
