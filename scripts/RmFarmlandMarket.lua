@@ -224,7 +224,7 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
         -- onOwnershipChanged, the usual clearer - never fires, so clear here regardless of transfer.
         -- Gating on `not connection:getIsServer()` leaves the nested listen-server loopback apply
         -- pass (getIsServer()==true, which still sees the flag and clears it via onOwnershipChanged
-        -- while running superFunc -> setLandOwnership for the live PDA refresh, per FM-68) untouched.
+        -- while running superFunc -> setLandOwnership for the live PDA refresh) untouched.
         if not connection:getIsServer() then
             RmNegotiationManager.pendingDeals[self.id] = nil
         end

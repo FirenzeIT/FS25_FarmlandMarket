@@ -54,8 +54,8 @@ RmNegotiationManager.COOLDOWNS = {
     selling_npc_walked   = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
     selling_walkaway     = { easy = 0, normal = 0, hard = 0, harder = 0, realistic = 0 },
     -- Flat sub-period re-list cooldown when the player deliberately walks away from a
-    -- sell negotiation (FM-12). Milder than a month (the player owns the land), but
-    -- enough to stop re-rolling the NPC opening bid. Fractional via FM-15's FLOAT tick.
+    -- sell negotiation. Milder than a month (the player owns the land), but
+    -- enough to stop re-rolling the NPC opening bid. Fractional via the FLOAT tick.
     selling_cancel       = { easy = 0.2, normal = 0.2, hard = 0.2, harder = 0.2, realistic = 0.2 },
 }
 

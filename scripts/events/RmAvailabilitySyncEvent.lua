@@ -157,8 +157,8 @@ function RmAvailabilitySyncEvent:_applyClientSync(connection)
     -- transition diff has something to compare against. This feature
     -- assumes FULL-SNAPSHOT semantics (current behavior); if the event
     -- is ever refactored to delta payloads, the diff logic in
-    -- RmWatchlistUI._collectTransitions would need redesign. See
-    -- spec-watchlist-for-sale-notification.md for the contract.
+    -- RmWatchlistUI._collectTransitions would need redesign to match the
+    -- new payload contract.
     local oldAvailability = RmFmAvailability.availability or {}
 
     -- Replace local availability table

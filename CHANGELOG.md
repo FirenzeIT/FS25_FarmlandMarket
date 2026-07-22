@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0.0-dev.1:
+- Added Italian (it) translation - contributed by FirenzeIT
+- Improved negotiation cooldowns - they now expire by day instead of only at month boundaries, and the "try again" message shows the days remaining when less than a month is left
+- Fixed multiplayer clients not seeing negotiated (unlisted) farmland purchases on the map/PDA until saving and rejoining
+- Fixed being able to re-roll the NPC buyer's opening bid by repeatedly walking away from a sell negotiation (added a short re-list cooldown)
+- Fixed a field staying buyable while not for sale after a negotiated purchase failed to complete on the server (for example, blocked by an active field mission); the availability bypass is now cleared as soon as the deal is processed
+
 ## 0.6.1.0 (Beta - 2026-05-15):
 - Added Watchlist notification when a watched farmland's negotiation cooldown ends
 

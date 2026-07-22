@@ -301,7 +301,7 @@ setupDialogCallbacks = function(dialog)
     dialog.onWalkAway = function()
         if mode == RmNegotiationEngine.MODE_SELL then
             -- Sell mode: deliberate walk-away -> immediate abort + light selling_cancel
-            -- re-list cooldown (FM-12). userInitiated=true is passed ONLY here; the
+            -- re-list cooldown. userInitiated=true is passed ONLY here; the
             -- shared dialog back/ESC reaches this same path via onClickBottomBar.
             sendCancelToServer(farmId, true)
             dialog:close()
