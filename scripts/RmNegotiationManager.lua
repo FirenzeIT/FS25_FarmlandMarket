@@ -24,6 +24,9 @@ RmNegotiationManager = {}
 
 local Log = RmLogging.getLogger("FarmlandMarket")
 
+-- Captured at source time: g_currentModName is nil by the time initialize() runs.
+local MOD_NAME = g_currentModName
+
 -- Cooldown liveness threshold. `remaining` is now a fractional period count
 -- (decremented by 1/daysPerPeriod per day). A single EPSILON is used at EVERY
 -- liveness gate - the tick's expiry, canNegotiate, the display helper, and the
@@ -1054,23 +1057,28 @@ function RmNegotiationManager.initialize()
     -- Subscribe to day changes (cooldowns tick fractionally per day; a full
     -- period still nets -1.0 - see onDayChanged)
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmNegotiationManager.onDayChanged, RmNegotiationManager)
-    -- Register console commands
-    addConsoleCommand("fmNegotiate", "Start negotiation on farmland (fmNegotiate <farmlandId>)",
-        "consoleStartNegotiation", RmNegotiationManager)
-    addConsoleCommand("fmSell", "Sell farmland (fmSell <farmlandId> [listingPrice])",
-        "consoleSell", RmNegotiationManager)
-    addConsoleCommand("fmOffer", "Submit offer/ask (fmOffer <amount>)",
-        "consoleOffer", RmNegotiationManager)
-    addConsoleCommand("fmWalkaway", "Walk away from negotiation",
-        "consoleWalkaway", RmNegotiationManager)
-    addConsoleCommand("fmRespond", "Respond to proposal (fmRespond accept|decline)",
-        "consoleRespond", RmNegotiationManager)
-    addConsoleCommand("fmCancel", "Cancel current negotiation",
-        "consoleCancel", RmNegotiationManager)
-    addConsoleCommand("fmSession", "Show current negotiation session",
-        "consoleSession", RmNegotiationManager)
-    addConsoleCommand("fmCooldowns", "Show active cooldowns",
-        "consoleCooldowns", RmNegotiationManager)
+    -- Register console commands (development builds only - they expose seller
+    -- internals and drive state from unvalidated input)
+    local ver = RmVersion.forMod(MOD_NAME, Log)
+    if ver:isDevelopmentVersion() then
+        addConsoleCommand("fmNegotiate", "Start negotiation on farmland (fmNegotiate <farmlandId>)",
+            "consoleStartNegotiation", RmNegotiationManager)
+        addConsoleCommand("fmSell", "Sell farmland (fmSell <farmlandId> [listingPrice])",
+            "consoleSell", RmNegotiationManager)
+        addConsoleCommand("fmOffer", "Submit offer/ask (fmOffer <amount>)",
+            "consoleOffer", RmNegotiationManager)
+        addConsoleCommand("fmWalkaway", "Walk away from negotiation",
+            "consoleWalkaway", RmNegotiationManager)
+        addConsoleCommand("fmRespond", "Respond to proposal (fmRespond accept|decline)",
+            "consoleRespond", RmNegotiationManager)
+        addConsoleCommand("fmCancel", "Cancel current negotiation",
+            "consoleCancel", RmNegotiationManager)
+        addConsoleCommand("fmSession", "Show current negotiation session",
+            "consoleSession", RmNegotiationManager)
+        addConsoleCommand("fmCooldowns", "Show active cooldowns",
+            "consoleCooldowns", RmNegotiationManager)
+        Log:debug("NegotiationManager: development console commands registered (%s)", ver:describe())
+    end
     Log:debug("NegotiationManager initialized")
     Log:trace("<<< RmNegotiationManager.initialize()")
 end

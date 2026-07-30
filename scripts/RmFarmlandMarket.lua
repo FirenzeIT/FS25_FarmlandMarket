@@ -1118,11 +1118,16 @@ local function onLoadMapFinished()
     RmNegotiationDialog.register()
     RmWatchlistDialog.register()
 
-    -- Register console commands
-    addConsoleCommand("fmList", "List all farmlands with prices", "consoleFmList", RmFarmlandMarket)
-    addConsoleCommand("fmInspect", "Inspect farmland price details", "consoleFmInspect", RmFarmlandMarket, "farmlandId")
-    addConsoleCommand("fmAvail", "Show availability status", "consoleFmAvail", RmFarmlandMarket)
-    addConsoleCommand("fmTestDialog", "Test negotiation dialog (buy|sell|unlisted|state N)", "consoleFmTestDialog", RmFarmlandMarket, "mode stateNum")
+    -- Register console commands (development builds only - they expose price
+    -- internals the GUI deliberately withholds)
+    local ver = RmVersion.forMod(RmFarmlandMarket.modName, Log)
+    if ver:isDevelopmentVersion() then
+        addConsoleCommand("fmList", "List all farmlands with prices", "consoleFmList", RmFarmlandMarket)
+        addConsoleCommand("fmInspect", "Inspect farmland price details", "consoleFmInspect", RmFarmlandMarket, "farmlandId")
+        addConsoleCommand("fmAvail", "Show availability status", "consoleFmAvail", RmFarmlandMarket)
+        addConsoleCommand("fmTestDialog", "Test negotiation dialog (buy|sell|unlisted|state N)", "consoleFmTestDialog", RmFarmlandMarket, "mode stateNum")
+        Log:debug("FarmlandMarket: development console commands registered (%s)", ver:describe())
+    end
 
     -- Subscribe to day change events
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmFarmlandMarket.onDayChanged, RmFarmlandMarket)
