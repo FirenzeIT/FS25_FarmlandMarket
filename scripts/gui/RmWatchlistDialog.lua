@@ -370,11 +370,12 @@ function RmWatchlistDialog:populateCellForItemInSection(list, section, index, ce
 end
 
 -- ============================================================================
--- INSTANCE METHODS - List events (stubs, identical for this iteration)
+-- INSTANCE METHODS - List events
 -- ============================================================================
 
---- Single-click handler. Stub: bounds-check + TRACE log only; visible
---- behaviour lands in a future curation spec.
+--- Single-click handler. Selecting a row has no visible effect: the handler
+--- bounds-checks the index and logs at TRACE. Bound from the SmoothList
+--- onClick attribute in RmWatchlistDialog.xml.
 ---@param list table the SmoothList element
 ---@param section number 1-based section index
 ---@param index number 1-based row index
@@ -389,8 +390,9 @@ function RmWatchlistDialog:onListClick(list, section, index)
         tostring(section), index, entry.farmlandId)
 end
 
---- Double-click handler. Intentionally identical to single-click for this
---- iteration; the visible-behaviour split arrives in a future curation spec.
+--- Double-click handler. Same as the single-click handler: bounds-check and a
+--- TRACE log, with no visible effect. Bound from the SmoothList onDoubleClick
+--- attribute in RmWatchlistDialog.xml.
 ---@param list table the SmoothList element
 ---@param section number 1-based section index
 ---@param index number 1-based row index

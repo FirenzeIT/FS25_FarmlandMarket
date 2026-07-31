@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="110">
     <author>Ritter</author>
-    <version>1.0.0.0-dev.1</version>
+    <version>1.0.0.0</version>
     <title>
         <en>Farmland Market</en>
     </title>
     <description>
         <en><![CDATA[
-*** BETA - This mod is under active development. Features are functional but may contain bugs. ***
-
 Makes farmland acquisition more realistic and strategic. Field prices reflect their actual crop value, and not all fields are always available for purchase.
 
 Features:
@@ -27,7 +25,7 @@ Notes:
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
-1.0.0.0-dev.1:
+1.0.0.0:
 - Improved negotiation cooldowns - they now expire by day instead of only at month boundaries, and the "try again" message shows the days remaining when less than a month is left
 - Fixed multiplayer clients not seeing negotiated (unlisted) farmland purchases on the map/PDA until saving and rejoining
 - Fixed being able to re-roll the NPC buyer's opening bid by repeatedly walking away from a sell negotiation (added a short re-list cooldown)

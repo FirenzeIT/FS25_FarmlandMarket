@@ -1,8 +1,5 @@
 # Farmland Market
 
-> [!WARNING]
-> **BETA** This mod is under active development. Features are functional but may contain bugs.
-
 Makes farmland acquisition more realistic and strategic. Field prices reflect their actual crop value, and not all fields are always available for purchase.
 
 In vanilla FS25, all unowned farmlands are always available at a static price - even fields with harvest-ready crops that can be immediately sold for profit. Farmland Market adds dynamic pricing based on crop value, limits which fields are for sale at any given time, introduces multi-round negotiation for buying and selling, and color-codes the map so you can see availability at a glance.
