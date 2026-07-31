@@ -28,22 +28,28 @@ Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
 1.0.0.0-dev.1:
-- Added Italian (it) translation - contributed by FirenzeIT
 - Improved negotiation cooldowns - they now expire by day instead of only at month boundaries, and the "try again" message shows the days remaining when less than a month is left
 - Fixed multiplayer clients not seeing negotiated (unlisted) farmland purchases on the map/PDA until saving and rejoining
 - Fixed being able to re-roll the NPC buyer's opening bid by repeatedly walking away from a sell negotiation (added a short re-list cooldown)
 - Fixed a field staying buyable while not for sale after a negotiated purchase failed to complete on the server (for example, blocked by an active field mission); the availability bypass is now cleared as soon as the deal is processed
+- Added Italian (it) translation - contributed by FirenzeIT
 
 0.6.1.0 (Beta - 2026-05-15):
 - Added Watchlist notification when a watched farmland's negotiation cooldown ends
 
 0.6.0.0 (Beta - 2026-05-09):
+
+Added:
 - Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
 - Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
 - Added save migration from old single negotiation toggle - existing saves automatically map to all three settings
 - Added color blind mode support - farmland overlays and legend switch to blue/orange when enabled in game settings
+
+Changed:
 - Improved negotiation fairness - players must increase buy offers and decrease sell asks each round
 - Improved cooldown message in sell mode - no longer says "the owner is not interested" when the player is the owner
+
+Fixed:
 - Fixed seller counter-offer going below their minimum acceptable price during negotiation
 - Fixed NPC buyer offer exceeding their maximum willingness to pay during negotiation
 - Fixed seller's first counter sometimes equaling their opening demand with high stubbornness

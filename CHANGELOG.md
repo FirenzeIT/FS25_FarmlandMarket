@@ -1,22 +1,28 @@
 # Changelog
 
 ## 1.0.0.0-dev.1:
-- Added Italian (it) translation - contributed by FirenzeIT
 - Improved negotiation cooldowns - they now expire by day instead of only at month boundaries, and the "try again" message shows the days remaining when less than a month is left
 - Fixed multiplayer clients not seeing negotiated (unlisted) farmland purchases on the map/PDA until saving and rejoining
 - Fixed being able to re-roll the NPC buyer's opening bid by repeatedly walking away from a sell negotiation (added a short re-list cooldown)
 - Fixed a field staying buyable while not for sale after a negotiated purchase failed to complete on the server (for example, blocked by an active field mission); the availability bypass is now cleared as soon as the deal is processed
+- Added Italian (it) translation - contributed by FirenzeIT
 
 ## 0.6.1.0 (Beta - 2026-05-15):
 - Added Watchlist notification when a watched farmland's negotiation cooldown ends
 
 ## 0.6.0.0 (Beta - 2026-05-09):
+
+### Added
 - Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
 - Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
 - Added save migration from old single negotiation toggle - existing saves automatically map to all three settings
 - Added color blind mode support - farmland overlays and legend switch to blue/orange when enabled in game settings
+
+### Changed
 - Improved negotiation fairness - players must increase buy offers and decrease sell asks each round
 - Improved cooldown message in sell mode - no longer says "the owner is not interested" when the player is the owner
+
+### Fixed
 - Fixed seller counter-offer going below their minimum acceptable price during negotiation
 - Fixed NPC buyer offer exceeding their maximum willingness to pay during negotiation
 - Fixed seller's first counter sometimes equaling their opening demand with high stubbornness
@@ -35,9 +41,9 @@
 - Fixed logger registration error when multiple Ritter mods are loaded
 
 ## 0.4.0.2 (Beta):
-- Fixed sell negotiation exploit where inflated listing prices bypassed NPC market value cap
 - Added listing price validation: cannot exceed twice the market value
-- Clamped NPC opening bid to market-value ceiling in negotiation engine
+- Clamped the NPC's opening bid to the market-value ceiling
+- Fixed sell negotiation exploit where inflated listing prices bypassed NPC market value cap
 
 ## 0.4.0.1 (Beta):
 - Fixed keyboard navigation not reaching Farmland Market settings in Game Settings
@@ -47,7 +53,7 @@
 - Added dedicated negotiation dialog with offer history, field details, and action buttons
 - Added seller names in negotiation messages for clearer context
 - Improved cooldown messages to show remaining time in months
-- Promoted from Alpha to Beta
+- Changed from Alpha to Beta
 
 ## 0.3.0.0 (Alpha)
 - Added negotiation system - buy and sell farmland through multi-round offers and counter-offers
@@ -67,9 +73,9 @@
 - Added base price multiplier setting (replaces fixed base price)
 - Added settings to Game Settings menu (availability preset and price multiplier)
 - Added multiplayer sync for all settings and availability state
-- Price multiplier tooltip now shows the map's base price per hectare
+- Changed the price multiplier tooltip to show the map's base price per hectare
 
 ## 0.1.0.0 (Alpha)
-- Initial release
-- Farmland prices now include estimated crop value
-- Configurable base price per hectare
+- Added the initial Farmland Market release
+- Added estimated crop value to farmland prices
+- Added a configurable base price per hectare
