@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<l10n>
+    <texts>
+        <!-- Меню налаштувань -->
+        <text name="rm_fm_settings_section" text="Ринок землі"/>
+        <text name="rm_fm_settings_availability" text="Доступність полів"/>
+        <text name="rm_fm_settings_availability_tooltip" text="Визначає, скільки полів доступно для придбання. Чим вищий рівень складності, тим менше полів і довше доводиться чекати. Поля змінюються відповідно до сезонних коливань ринку (більше пропозицій у період з листопада по березень). Рівень «Реалістичний» є екстремальним — більшість полів залишаються недоступними протягом місяців."/>
+        <text name="rm_fm_settings_pricePerHa" text="Базова ціна за гектар"/>
+        <text name="rm_fm_settings_pricePerHa_tooltip" text="Встановіть індивідуальну базову ціну за гектар для всіх сільськогосподарських угідь. До неї додається вартість врожаю."/>
+        <text name="rm_fm_settings_pricePerHa_mapDefault" text="За замовчуванням для карти"/>
+        <text name="rm_fm_settings_pricePerHa_dialogPrompt" text="Введіть базову ціну за гектар (значення за замовчуванням на карті: %s/га)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonDefault" text="%s/га (За замовчуванням)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonCustom" text="%s/га"/>
+        <text name="rm_fm_settings_pricePerHa_dialogConfirm" text="Встановити"/>
+
+        <!-- Пресети доступності -->
+        <text name="rm_fm_preset_easy" text="Легко"/>
+        <text name="rm_fm_preset_normal" text="Нормально"/>
+        <text name="rm_fm_preset_hard" text="Складно"/>
+        <text name="rm_fm_preset_harder" text="Складніше"/>
+        <text name="rm_fm_preset_realistic" text="Реалістичний"/>
+
+        <!-- Контексна панель / Легенда -->
+        <text name="rm_fm_listPrice" text="Ціна в оголошенні"/>
+        <text name="rm_fm_marketValue" text="Ринкова вартість"/>
+        <text name="rm_fm_notForSale" text="Не продається"/>
+        <text name="rm_fm_forSale" text="Продається"/>
+
+        <!-- Кнопки дій -->
+        <text name="rm_fm_btn_makeOffer" text="Зробити пропозицію"/>
+        <text name="rm_fm_btn_negotiateSale" text="Вести переговори"/>
+
+        <!-- Налаштування переговорів -->
+        <text name="rm_fm_settings_negotiateBuy" text="Торг під час купівлі"/>
+        <text name="rm_fm_settings_negotiateBuy_tooltip" text="Купуючи виставлене на продаж поле, домовляйтеся про ціну через пропозиції та зустрічні пропозиції замість миттєвої сплати ціни з оголошення."/>
+        <text name="rm_fm_settings_negotiateSell" text="Торг під час продажу"/>
+        <text name="rm_fm_settings_negotiateSell_tooltip" text="Під час продажу вашого поля покупці-NPC торгуватимуться через пропозиції та зустрічні пропозиції замість миттєвого продажу за ринковою вартістю."/>
+        <text name="rm_fm_settings_unlistedOffers" text="Пропозиції для невиставлених полів"/>
+        <text name="rm_fm_settings_unlistedOffers_tooltip" text="Дозволяє робити пропозиції щодо полів, які не виставлені на продаж. Власник може відмовити або зажадати націнку. Потребує увімкненого параметра «Доступність полів»."/>
+
+        <!-- Інтерфейс переговорів -->
+        <text name="rm_fm_neg_listedOpening" text="Це поле виставлено за %s. Яка ваша пропозиція?"/>
+        <text name="rm_fm_neg_unlistedOpening" text="%s просить %s за це поле."/>
+        <text name="rm_fm_neg_sellerCounters" text="%s пропонує зустрічну ціну %s."/>
+        <text name="rm_fm_neg_npcOpening" text="Покупець пропонує %s за ваше поле."/>
+        <text name="rm_fm_neg_npcRaises" text="Покупець підвищує свою пропозицію до %s."/>
+        <text name="rm_fm_neg_counterOffer" text="Зустрічна пропозиція"/>
+        <text name="rm_fm_neg_enterOffer" text="Введіть вашу пропозицію:"/>
+        <text name="rm_fm_neg_enterCounterAsk" text="Введіть вашу зустрічну ціну:"/>
+        <text name="rm_fm_neg_convergence" text="%s пропонує поділити різницю на %s?"/>
+        <text name="rm_fm_neg_lastDitch" text="%s каже: зачекайте, як щодо %s?"/>
+        <text name="rm_fm_neg_roundsExhausted" text="Остаточна пропозиція від %s: %s. Прийняти чи відмовитися?"/>
+        <text name="rm_fm_neg_sellRoundsExhausted" text="Остаточна пропозиція покупця: %s. Прийняти чи відмовитися?"/>
+        <text name="rm_fm_neg_dealBuy" text="Згода! Ви придбали поле за %s."/>
+        <text name="rm_fm_neg_dealSell" text="Згода! Ви продали поле за %s."/>
+        <text name="rm_fm_neg_rejected" text="Ваша пропозиція була занадто низькою. %s більше не вестиме переговорів."/>
+        <text name="rm_fm_neg_dismissed" text="%s зараз не зацікавлений у продажу."/>
+        <text name="rm_fm_neg_npcWalked" text="Покупець відмовився від угоди — ваша ціна була занадто високою."/>
+        <text name="rm_fm_neg_walkedAway" text="Ви вийшли з переговорів."/>
+        <text name="rm_fm_neg_ended" text="Переговори завершено."/>
+        <text name="rm_fm_neg_cooldown" text="Власник зараз не зацікавлений у переговорах. Спробуйте пізніше."/>
+        <text name="rm_fm_neg_locked" text="Інший гравець зараз веде переговори щодо цього поля."/>
+        <text name="rm_fm_neg_invalidFarmland" text="За це поле неможливо вести переговори."/>
+        <text name="rm_fm_neg_error" text="Помилка переговорів: %s"/>
+        <text name="rm_fm_neg_invalidAmount" text="Будь ласка, введіть коректне число, більше нуля."/>
+        <text name="rm_fm_neg_listingTooHigh" text="Ціна в оголошенні не може перевищувати %s (подвійну ринкову вартість)."/>
+        <text name="rm_fm_neg_listingTooHigh2" text="Ціна в оголошенні була занадто високою."/>
+        <text name="rm_fm_neg_cancelConfirm" text="Вийти з цих переговорів?"/>
+        <text name="rm_fm_neg_insufficientFunds" text="У вас недостатньо коштів для завершення цієї покупки."/>
+        <text name="rm_fm_neg_offerNotHigher" text="Ваша пропозиція має бути вищою за попередню."/>
+        <text name="rm_fm_neg_askNotLower" text="Ваша ціна має бути нижчою за попередню."/>
+        <text name="rm_fm_neg_cooldownDisplay" text="Власник зараз не зацікавлений у переговорах. Спробуйте знову через %d місяць(і/ів)."/>
+        <text name="rm_fm_neg_cooldownDaysDisplay" text="Власник зараз не зацікавлений у переговорах. Спробуйте знову через %d день(днів)."/>
+        <text name="rm_fm_neg_cooldownSell" text="Ви не можете повторно виставити це поле зараз. Спробуйте пізніше."/>
+        <text name="rm_fm_neg_cooldownSellDisplay" text="Ви не можете повторно виставити це поле зараз. Спробуйте знову через %d місяць(і/ів)."/>
+        <text name="rm_fm_neg_cooldownSellDaysDisplay" text="Ви не можете повторно виставити це поле зараз. Спробуйте знову через %d день(днів)."/>
+        <text name="rm_fm_neg_submit" text="Надіслати"/>
+        <text name="rm_fm_neg_continue" text="Продовжити"/>
+        <text name="rm_fm_neg_accept" text="Прийняти"/>
+        <text name="rm_fm_neg_decline" text="Відхилити"/>
+        <text name="rm_fm_neg_walkAway" text="Вийти з угоди"/>
+        <text name="rm_fm_neg_enterListingPrice" text="Введіть ціну виставлення для цього поля (ринкова вартість: %s):"/>
+
+        <!-- Діалог переговорів -->
+        <text name="rm_fm_neg_dlg_titleBuy" text="Переговори — Ділянка %s"/>
+        <text name="rm_fm_neg_dlg_titleSell" text="Продаж — Ділянка %s"/>
+        <text name="rm_fm_neg_dlg_headerArea" text="%.1f га"/>
+        <text name="rm_fm_neg_dlg_headerAreaValue" text="%.1f га  |  Ринкова вартість: %s"/>
+        <text name="rm_fm_neg_dlg_you" text="Ви"/>
+        <text name="rm_fm_neg_dlg_seller" text="Продавець"/>
+        <text name="rm_fm_neg_dlg_buyer" text="Покупець"/>
+        <text name="rm_fm_neg_dlg_listedAt" text="Виставлено за"/>
+        <text name="rm_fm_neg_dlg_ownerDemands" text="%s вимагає"/>
+        <text name="rm_fm_neg_dlg_youListedAt" text="Ви виставили за"/>
+        <text name="rm_fm_neg_dlg_waiting" text="Очікування відповіді..."/>
+        <text name="rm_fm_neg_counterAsk" text="Зустрічна ціна"/>
+        <text name="rm_fm_neg_close" text="Закрити"/>
+
+        <!-- Список спостереження -->
+        <text name="rm_fm_btn_watchlist" text="Список спостереження"/>
+        <text name="rm_fm_watchlist_title" text="Список спостереження"/>
+        <text name="rm_fm_watchlist_back" text="Назад"/>
+        <text name="rm_fm_farmland_label" text="Ділянка"/>
+        <text name="rm_fm_watchlist_empty" text="Ваш список спостереження порожній. Оберіть ділянку на карті та натисніть «Додати до списку спостереження»."/>
+        <text name="rm_fm_btn_addToWatchlist" text="Додати до списку спостереження"/>
+        <text name="rm_fm_btn_removeFromWatchlist" text="Видалити зі списку спостереження"/>
+        <text name="rm_fm_watchlist_now_for_sale_title" text="Оновлення списку спостереження"/>
+        <text name="rm_fm_watchlist_now_for_sale_single_with_price" text="%s тепер продається за %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_single_no_price" text="%s тепер продається"/>
+        <text name="rm_fm_watchlist_now_for_sale_batched" text="%d ділянок зі списку спостереження тепер продаються: %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_overflow_suffix" text=", та ще %d"/>
+        <text name="rm_fm_watchlist_cooldown_ended_title" text="Оновлення списку спостереження"/>
+        <text name="rm_fm_watchlist_cooldown_ended_single" text="Завершився час очікування для %s"/>
+        <text name="rm_fm_watchlist_cooldown_ended_batched" text="Завершився час очікування для %d ділянок зі списку спостереження: %s"/>
+    </texts>
+</l10n>
