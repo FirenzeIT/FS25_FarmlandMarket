@@ -68,17 +68,15 @@ Fixed:
 
         ]]>        </en>
         <de><![CDATA[
-*** BETA - Dieses Mod befindet sich in aktiver Entwicklung. Funktionen sind verwendbar, können aber Fehler enthalten. ***
-
-Macht den Erwerb von Ackerland realistischer und strategischer. Feldpreise spiegeln den tatsächlichen Erntwert wider, und nicht alle Felder sind jederzeit zum Kauf verfügbar.
+Macht den Erwerb von Ackerland realistischer und strategischer. Feldpreise spiegeln den tatsächlichen Erntewert wider, und nicht alle Felder sind jederzeit zum Kauf verfügbar.
 
 Funktionen:
 - Verhandlungssystem - Kauf und Verkauf von Ackerland durch Angebote und Gegenangebote, mit unabhängigen Umschaltern für Käufe, Verkäufe und nicht gelistete Angebote
 - Preisanpassung nach Kulturwert - der Feldpreis beinhaltet den geschätzten Erntewert
 - Begrenzte Feldverfügbarkeit - Felder wechseln täglich mit saisonalen Schwankungen
-- Fünf Schwierigkeitsvoreinstellungen - Einfach, Normal, Schwer, Härter, Realistisch (oder aus)
+- Fünf Schwierigkeitsvoreinstellungen - Einfach, Normal, Schwer, Schwerer, Realistisch (oder aus)
 - Einstellbarer Basispreis pro Hektar
-- Merkliste - Felder, für die Sie sich interessieren, verfolgen und Benachrichtigung erhalten, wenn sie zum Verkauf stehen oder ihre Abklingzeit endet
+- Beobachtungsliste - Felder, für die Sie sich interessieren, verfolgen und Benachrichtigung erhalten, wenn sie zum Verkauf stehen oder ihre Abklingzeit endet
 - Kartenfarbgebung - zum Verkauf stehende und nicht verfügbare Felder sind visuell unterscheidbar, mit einer farbenblindenfreundlichen Palette
 - Alle Einstellungen im Ingame-Optionsmenü zugänglich
 
